@@ -1,6 +1,7 @@
 # go-proxyproto
 
 [![Build Status](https://travis-ci.org/pires/go-proxyproto.svg?branch=master)](https://travis-ci.org/pires/go-proxyproto)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pires/go-proxyproto)](https://goreportcard.com/report/github.com/pires/go-proxyproto)
 
 A Go library implementation of the [PROXY protocol, versions 1 and 2](http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt),
 which provides, as per specification:
