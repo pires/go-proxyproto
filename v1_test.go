@@ -101,9 +101,11 @@ func TestWriteVersion1(t *testing.T) {
 		if _, err := header.WriteTo(w); err != nil {
 			t.Fatal("TestWriteVersion1: Unexpected error ", err)
 		}
+		w.Flush()
+
 		// Read written bytes to validate written header
-		reader = bufio.NewReader(strings.NewReader(fixtureTCP6V1))
-		if _, err := Read(reader); err != nil {
+		r := bufio.NewReader(&b)
+		if _, err := Read(r); err != nil {
 			t.Fatal("TestWriteVersion1: Unexpected error ", err)
 		}
 	}

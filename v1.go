@@ -84,9 +84,9 @@ func (header *Header) writeVersion1(w io.Writer) (int64, error) {
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(header.DestinationAddress.String())
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(string(header.SourcePort))
+	buf.WriteString(strconv.Itoa(int(header.SourcePort)))
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(string(header.DestinationPort))
+	buf.WriteString(strconv.Itoa(int(header.DestinationPort)))
 	buf.WriteString(CRLF)
 
 	return buf.WriteTo(w)
