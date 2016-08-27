@@ -50,13 +50,14 @@ func TestParseV1Invalid(t *testing.T) {
 	}
 }
 
-var validParseV1Tests = []struct {
+var validParseAndWriteV1Tests = []struct {
 	reader         *bufio.Reader
 	expectedHeader *Header
 }{
 	{
 		bufio.NewReader(strings.NewReader(fixtureTCP4V1)),
 		&Header{
+			Version:            1,
 			Command:            PROXY,
 			TransportProtocol:  TCPv4,
 			SourceAddress:      v4addr,
@@ -68,6 +69,7 @@ var validParseV1Tests = []struct {
 	{
 		bufio.NewReader(strings.NewReader(fixtureTCP6V1)),
 		&Header{
+			Version:            1,
 			Command:            PROXY,
 			TransportProtocol:  TCPv6,
 			SourceAddress:      v6addr,
@@ -79,7 +81,7 @@ var validParseV1Tests = []struct {
 }
 
 func TestParseV1Valid(t *testing.T) {
-	for _, tt := range validParseV1Tests {
+	for _, tt := range validParseAndWriteV1Tests {
 		header, err := Read(tt.reader)
 		if err != nil {
 			t.Fatal("TestParseV1Valid: unexpected error", err.Error())
@@ -90,23 +92,24 @@ func TestParseV1Valid(t *testing.T) {
 	}
 }
 
-func TestWriteVersion1(t *testing.T) {
-	// Build valid header
-	reader := bufio.NewReader(strings.NewReader(fixtureTCP6V1))
-	if header, err := Read(reader); err != nil {
-		t.Fatal("TestWriteVersion1: Unexpected error ", err)
-	} else {
+func TestWriteV1Valid(t *testing.T) {
+	for _, tt := range validParseAndWriteV1Tests {
 		var b bytes.Buffer
 		w := bufio.NewWriter(&b)
-		if _, err := header.WriteTo(w); err != nil {
-			t.Fatal("TestWriteVersion1: Unexpected error ", err)
+		if _, err := tt.expectedHeader.WriteTo(w); err != nil {
+			t.Fatal("TestWriteV1Valid: Unexpected error ", err)
 		}
 		w.Flush()
 
 		// Read written bytes to validate written header
 		r := bufio.NewReader(&b)
-		if _, err := Read(r); err != nil {
-			t.Fatal("TestWriteVersion1: Unexpected error ", err)
+		newHeader, err := Read(r)
+		if err != nil {
+			t.Fatal("TestWriteV1Valid: Unexpected error ", err)
+		}
+
+		if !newHeader.EqualTo(tt.expectedHeader) {
+			t.Fatalf("TestWriteV1Valid: expected %#v, actual %#v", tt.expectedHeader, newHeader)
 		}
 	}
 }

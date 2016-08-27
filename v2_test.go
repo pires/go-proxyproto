@@ -79,7 +79,7 @@ func TestParseV2Invalid(t *testing.T) {
 	}
 }
 
-var validParseV2Tests = []struct {
+var validParseAndWriteV2Tests = []struct {
 	reader         *bufio.Reader
 	expectedHeader *Header
 }{
@@ -87,6 +87,7 @@ var validParseV2Tests = []struct {
 	{
 		newBufioReader(append(SIGV2, LOCAL)),
 		&Header{
+			Version: 2,
 			Command: LOCAL,
 		},
 	},
@@ -94,6 +95,7 @@ var validParseV2Tests = []struct {
 	{
 		newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureIPv4V2...)),
 		&Header{
+			Version:            2,
 			Command:            PROXY,
 			TransportProtocol:  TCPv4,
 			SourceAddress:      v4addr,
@@ -106,6 +108,7 @@ var validParseV2Tests = []struct {
 	{
 		newBufioReader(append(append(SIGV2, PROXY, TCPv6), fixtureIPv6V2...)),
 		&Header{
+			Version:            2,
 			Command:            PROXY,
 			TransportProtocol:  TCPv6,
 			SourceAddress:      v6addr,
@@ -118,6 +121,7 @@ var validParseV2Tests = []struct {
 	{
 		newBufioReader(append(append(SIGV2, PROXY, UDPv4), fixtureIPv4V2...)),
 		&Header{
+			Version:            2,
 			Command:            PROXY,
 			TransportProtocol:  UDPv4,
 			SourceAddress:      v4addr,
@@ -130,6 +134,7 @@ var validParseV2Tests = []struct {
 	{
 		newBufioReader(append(append(SIGV2, PROXY, UDPv6), fixtureIPv6V2...)),
 		&Header{
+			Version:            2,
 			Command:            PROXY,
 			TransportProtocol:  UDPv6,
 			SourceAddress:      v6addr,
@@ -142,7 +147,7 @@ var validParseV2Tests = []struct {
 }
 
 func TestParseV2Valid(t *testing.T) {
-	for _, tt := range validParseV2Tests {
+	for _, tt := range validParseAndWriteV2Tests {
 		header, err := Read(tt.reader)
 		if err != nil {
 			t.Fatal("TestParseV2Valid: unexpected error", err.Error())
@@ -153,27 +158,28 @@ func TestParseV2Valid(t *testing.T) {
 	}
 }
 
-func newBufioReader(b []byte) *bufio.Reader {
-	return bufio.NewReader(bytes.NewReader(b))
-}
-
-func TestWriteVersion2(t *testing.T) {
-	// Build valid header
-	reader := newBufioReader(append(append(SIGV2, PROXY, UDPv6), fixtureIPv6V2...))
-	if header, err := Read(reader); err != nil {
-		t.Fatal("TestWriteVersion2: Unexpected error ", err)
-	} else {
+func TestWriteV2Valid(t *testing.T) {
+	for _, tt := range validParseAndWriteV2Tests {
 		var b bytes.Buffer
 		w := bufio.NewWriter(&b)
-		if _, err := header.WriteTo(w); err != nil {
+		if _, err := tt.expectedHeader.WriteTo(w); err != nil {
 			t.Fatal("TestWriteVersion2: Unexpected error ", err)
 		}
 		w.Flush()
 
 		// Read written bytes to validate written header
 		r := bufio.NewReader(&b)
-		if _, err := Read(r); err != nil {
+		newHeader, err := Read(r)
+		if err != nil {
 			t.Fatal("TestWriteVersion2: Unexpected error ", err)
 		}
+
+		if !newHeader.EqualTo(tt.expectedHeader) {
+			t.Fatalf("TestWriteVersion2: expected %#v, actual %#v", tt.expectedHeader, newHeader)
+		}
 	}
+}
+
+func newBufioReader(b []byte) *bufio.Reader {
+	return bufio.NewReader(bytes.NewReader(b))
 }
