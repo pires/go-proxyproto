@@ -34,11 +34,11 @@ var invalidParseV1Tests = []struct {
 	},
 	{
 		newBufioReader([]byte("PROXY TCP6 " + TCP4AddressesAndPorts + CRLF)),
-		ErrInetFamilyDoesntMatchProtocol,
+		ErrInvalidAddress,
 	},
 	{
 		newBufioReader([]byte("PROXY TCP4 " + TCP6AddressesAndPorts + CRLF)),
-		ErrInetFamilyDoesntMatchProtocol,
+		ErrInvalidAddress,
 	},
 }
 

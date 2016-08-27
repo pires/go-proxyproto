@@ -63,11 +63,19 @@ var invalidParseV2Tests = []struct {
 	},
 	{
 		newBufioReader(append(append(SIGV2, PROXY, TCPv4), lengthV4Bytes...)),
-		ErrInvalidAddress,
+		ErrInvalidLength,
 	},
 	{
 		newBufioReader(append(append(SIGV2, PROXY, TCPv6), lengthV6Bytes...)),
-		ErrInvalidAddress,
+		ErrInvalidLength,
+	},
+	{
+		newBufioReader(append(append(append(SIGV2, PROXY, TCPv4), lengthV6Bytes...), fixtureIPv6Address...)),
+		ErrInvalidLength,
+	},
+	{
+		newBufioReader(append(append(append(SIGV2, PROXY, TCPv6), lengthV6Bytes...), fixtureIPv4Address...)),
+		ErrInvalidLength,
 	},
 }
 

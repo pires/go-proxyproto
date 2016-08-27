@@ -83,7 +83,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return nil, ErrUnsupportedAddressFamilyAndProtocol
 	}
 
-	// Read addresses and ports
+	// Make sure there are bytes available as specified in length
 	var length uint16
 	if err := binary.Read(io.LimitReader(reader, 2), binary.BigEndian, &length); err != nil {
 		return nil, ErrCantReadLength
@@ -92,6 +92,11 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return nil, ErrInvalidLength
 	}
 
+	if _, err := reader.Peek(int(length)); err != nil {
+		return nil, ErrInvalidLength
+	}
+
+	// Read addresses and ports
 	if header.TransportProtocol.IsIPv4() {
 		var addr _addr4
 		if err := binary.Read(io.LimitReader(reader, int64(length)), binary.BigEndian, &addr); err != nil {

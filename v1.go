@@ -110,7 +110,7 @@ func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (addr n
 	addr = net.ParseIP(addrStr)
 	tryV4 := addr.To4()
 	if (protocol == TCPv4 && tryV4 == nil) || (protocol == TCPv6 && tryV4 != nil) {
-		err = ErrInetFamilyDoesntMatchProtocol
+		err = ErrInvalidAddress
 	}
 	return
 }
