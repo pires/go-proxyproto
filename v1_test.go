@@ -46,10 +46,10 @@ var invalidParseV1Tests = []struct {
 	},
 }
 
-func TestParseV1Invalid(t *testing.T) {
+func TestReadV1Invalid(t *testing.T) {
 	for _, tt := range invalidParseV1Tests {
 		if _, err := Read(tt.reader); err != tt.expectedError {
-			t.Fatalf("TestParseV1Invalid: expected %s, actual %s", tt.expectedError, err)
+			t.Fatalf("TestReadV1Invalid: expected %s, actual %s", tt.expectedError, err)
 		}
 	}
 }

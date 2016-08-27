@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"time"
 )
 
 var (
@@ -84,4 +85,29 @@ func Read(reader *bufio.Reader) (*Header, error) {
 	}
 
 	return nil, ErrNoProxyProtocol
+}
+
+// ReadTimeout acts as Read but takes a timeout. If that timeout is reached, it's assumed
+// there's no proxy protocol header.
+func ReadTimeout(reader *bufio.Reader, timeout time.Duration) (*Header, error) {
+	type header struct {
+		h *Header
+		e error
+	}
+	read := make(chan *header, 1)
+
+	go func() {
+		h := &header{}
+		h.h, h.e = Read(reader)
+		read <- h
+	}()
+
+	for {
+		select {
+		case result := <-read:
+			return result.h, result.e
+		case <-time.After(timeout):
+			return nil, ErrNoProxyProtocol
+		}
+	}
 }
