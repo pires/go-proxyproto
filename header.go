@@ -77,12 +77,9 @@ func (header *Header) WriteTo(w io.Writer) (int64, error) {
 // the remaining header, assume the reader buffer to be in a corrupt state.
 func Read(reader *bufio.Reader) (*Header, error) {
 	// Don't touch reader buffer before understanding if this is a valid header.
-	signature, _ := reader.Peek(13)
-
-	// Is it v1 or v2?
-	if bytes.Equal(signature[:5], SIGV1) {
+	if signature, err := reader.Peek(5); err == nil && bytes.Equal(signature[:5], SIGV1) {
 		return parseVersion1(reader)
-	} else if bytes.Equal(signature[:12], SIGV2) {
+	} else if signature, err := reader.Peek(12); err == nil && bytes.Equal(signature[:12], SIGV2) {
 		return parseVersion2(reader)
 	}
 

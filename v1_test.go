@@ -21,6 +21,10 @@ var invalidParseV1Tests = []struct {
 	expectedError error
 }{
 	{
+		newBufioReader([]byte("PROX")),
+		ErrNoProxyProtocol,
+	},
+	{
 		newBufioReader([]byte(NO_PROTOCOL)),
 		ErrNoProxyProtocol,
 	},

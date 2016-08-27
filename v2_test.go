@@ -34,6 +34,10 @@ var invalidParseV2Tests = []struct {
 	expectedError error
 }{
 	{
+		newBufioReader(SIGV2[2:]),
+		ErrNoProxyProtocol,
+	},
+	{
 		newBufioReader([]byte(NO_PROTOCOL)),
 		ErrNoProxyProtocol,
 	},
