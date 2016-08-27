@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"strconv"
 )
 
 var (
@@ -156,9 +155,22 @@ func (header *Header) writeVersion2(w io.Writer) (int64, error) {
 		}
 		buf.Write(addrSrc)
 		buf.Write(addrDst)
+
+		portSrcBytes := func() []byte {
+			a := make([]byte, 2)
+			binary.BigEndian.PutUint16(a, header.SourcePort)
+			return a
+		}()
+		buf.Write(portSrcBytes)
+
+		portDstBytes := func() []byte {
+			a := make([]byte, 2)
+			binary.BigEndian.PutUint16(a, header.DestinationPort)
+			return a
+		}()
+		buf.Write(portDstBytes)
+
 	}
-	buf.WriteString(strconv.Itoa(int(header.SourcePort)))
-	buf.WriteString(strconv.Itoa(int(header.DestinationPort)))
 
 	return buf.WriteTo(w)
 }
