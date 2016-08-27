@@ -76,6 +76,7 @@ func (header *Header) WriteTo(w io.Writer) (int64, error) {
 //
 // If proxy protocol header signature is present but an error is raised while processing
 // the remaining header, assume the reader buffer to be in a corrupt state.
+// Also, this operation will block until enough bytes are available for peeking.
 func Read(reader *bufio.Reader) (*Header, error) {
 	// Don't touch reader buffer before understanding if this is a valid header.
 	if signature, err := reader.Peek(5); err == nil && bytes.Equal(signature[:5], SIGV1) {
