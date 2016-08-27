@@ -106,22 +106,11 @@ func parseV1PortNumber(portStr string) (uint16, error) {
 	return port, err
 }
 
-func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (addr *net.IPAddr, err error) {
-	var proto string
-	switch protocol {
-	case TCPv4:
-		proto = "ip4"
-	case TCPv6:
-		proto = "ip6"
-	default:
-		proto = "ip"
-	}
-	addr, err = net.ResolveIPAddr(proto, addrStr)
-	if err == nil {
-		tryV4 := addr.IP.To4()
-		if (protocol == TCPv4 && tryV4 == nil) || (protocol == TCPv6 && tryV4 != nil) {
-			err = ErrInetFamilyDoesntMatchProtocol
-		}
+func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (addr net.IP, err error) {
+	addr = net.ParseIP(addrStr)
+	tryV4 := addr.To4()
+	if (protocol == TCPv4 && tryV4 == nil) || (protocol == TCPv6 && tryV4 != nil) {
+		err = ErrInetFamilyDoesntMatchProtocol
 	}
 	return
 }

@@ -18,8 +18,8 @@ var (
 	}()
 
 	// Tests don't care if source and destination addresses and ports are the same
-	addressesIPv4 = append(v4addr.IP.To4(), v4addr.IP.To4()...)
-	addressesIPv6 = append(v6addr.IP.To16(), v6addr.IP.To16()...)
+	addressesIPv4 = append(v4addr.To4(), v4addr.To4()...)
+	addressesIPv6 = append(v6addr.To16(), v6addr.To16()...)
 	ports         = append(portBytes, portBytes...)
 
 	// Fixtures to use in tests

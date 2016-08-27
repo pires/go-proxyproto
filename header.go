@@ -38,8 +38,8 @@ type Header struct {
 	Version            byte
 	Command            ProtocolVersionAndCommand
 	TransportProtocol  AddressFamilyAndProtocol
-	SourceAddress      net.Addr
-	DestinationAddress net.Addr
+	SourceAddress      net.IP
+	DestinationAddress net.IP
 	SourcePort         uint16
 	DestinationPort    uint16
 }

@@ -12,6 +12,6 @@ const (
 )
 
 var (
-	v4addr, _ = net.ResolveIPAddr(INET4, IP4_ADDR)
-	v6addr, _ = net.ResolveIPAddr(INET6, IP6_ADDR)
+	v4addr = net.ParseIP(IP4_ADDR).To4()
+	v6addr = net.ParseIP(IP6_ADDR).To16()
 )

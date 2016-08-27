@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"net"
 	"strconv"
 )
 
@@ -99,8 +98,8 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if err := binary.Read(io.LimitReader(reader, int64(length)), binary.BigEndian, &addr); err != nil {
 			return nil, ErrInvalidAddress
 		}
-		header.SourceAddress = &net.IPAddr{IP: addr.Src[:], Zone: ""}
-		header.DestinationAddress = &net.IPAddr{IP: addr.Dst[:], Zone: ""}
+		header.SourceAddress = addr.Src[:]
+		header.DestinationAddress = addr.Dst[:]
 		header.SourcePort = addr.SrcPort
 		header.DestinationPort = addr.DstPort
 	} else if header.TransportProtocol.IsIPv6() {
@@ -108,22 +107,25 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if err := binary.Read(io.LimitReader(reader, int64(length)), binary.BigEndian, &addr); err != nil {
 			return nil, ErrInvalidAddress
 		}
-		header.SourceAddress = &net.IPAddr{IP: addr.Src[:], Zone: ""}
-		header.DestinationAddress = &net.IPAddr{IP: addr.Dst[:], Zone: ""}
+		header.SourceAddress = addr.Src[:]
+		header.DestinationAddress = addr.Dst[:]
 		header.SourcePort = addr.SrcPort
 		header.DestinationPort = addr.DstPort
-	} else if header.TransportProtocol.IsUnix() {
-		var addr _addrUnix
-		if err := binary.Read(io.LimitReader(reader, int64(length)), binary.BigEndian, &addr); err != nil {
-			return nil, ErrInvalidAddress
-		}
-		if header.SourceAddress, err = net.ResolveUnixAddr("unix", string(addr.Src[:])); err != nil {
-			return nil, ErrCantResolveSourceUnixAddress
-		}
-		if header.DestinationAddress, err = net.ResolveUnixAddr("unix", string(addr.Dst[:])); err != nil {
-			return nil, ErrCantResolveDestinationUnixAddress
-		}
 	}
+	// TODO fully support Unix addresses
+	//	else if header.TransportProtocol.IsUnix() {
+	//		var addr _addrUnix
+	//		if err := binary.Read(io.LimitReader(reader, int64(length)), binary.BigEndian, &addr); err != nil {
+	//			return nil, ErrInvalidAddress
+	//		}
+	//
+	//if header.SourceAddress, err = net.ResolveUnixAddr("unix", string(addr.Src[:])); err != nil {
+	//	return nil, ErrCantResolveSourceUnixAddress
+	//}
+	//if header.DestinationAddress, err = net.ResolveUnixAddr("unix", string(addr.Dst[:])); err != nil {
+	//	return nil, ErrCantResolveDestinationUnixAddress
+	//}
+	//}
 
 	// TODO add encapsulated TLV support
 
@@ -134,29 +136,27 @@ func (header *Header) writeVersion2(w io.Writer) (int64, error) {
 	var buf bytes.Buffer
 	buf.Write(SIGV2)
 	buf.WriteByte(header.Command.toByte())
-	buf.WriteByte(header.TransportProtocol.toByte())
-	// TODO add encapsulated TLV length
-	var addrSrc, addrDst []byte
-	if header.TransportProtocol.IsIPv4() {
-		buf.Write(lengthV4Bytes)
-		src, _ := net.ResolveIPAddr(INET4, header.SourceAddress.String())
-		addrSrc = src.IP.To4()
-		dst, _ := net.ResolveIPAddr(INET4, header.DestinationAddress.String())
-		addrDst = dst.IP.To4()
-	} else if header.TransportProtocol.IsIPv6() {
-		buf.Write(lengthV6Bytes)
-		src, _ := net.ResolveIPAddr(INET6, header.SourceAddress.String())
-		addrSrc = src.IP.To16()
-		dst, _ := net.ResolveIPAddr(INET6, header.DestinationAddress.String())
-		addrDst = dst.IP.To16()
-	} else if header.TransportProtocol.IsUnix() {
-		buf.Write(lengthUnixBytes)
-		// TODO is below right?
-		addrSrc = []byte(header.SourceAddress.String())
-		addrDst = []byte(header.DestinationAddress.String())
+	if !header.Command.IsLocal() {
+		buf.WriteByte(header.TransportProtocol.toByte())
+		// TODO add encapsulated TLV length
+		var addrSrc, addrDst []byte
+		if header.TransportProtocol.IsIPv4() {
+			buf.Write(lengthV4Bytes)
+			addrSrc = header.SourceAddress.To4()
+			addrDst = header.DestinationAddress.To4()
+		} else if header.TransportProtocol.IsIPv6() {
+			buf.Write(lengthV6Bytes)
+			addrSrc = header.SourceAddress.To16()
+			addrDst = header.DestinationAddress.To16()
+		} else if header.TransportProtocol.IsUnix() {
+			buf.Write(lengthUnixBytes)
+			// TODO is below right?
+			addrSrc = []byte(header.SourceAddress.String())
+			addrDst = []byte(header.DestinationAddress.String())
+		}
+		buf.Write(addrSrc)
+		buf.Write(addrDst)
 	}
-	buf.Write(addrSrc)
-	buf.Write(addrDst)
 	buf.WriteString(strconv.Itoa(int(header.SourcePort)))
 	buf.WriteString(strconv.Itoa(int(header.DestinationPort)))
 
