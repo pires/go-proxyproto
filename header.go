@@ -103,12 +103,12 @@ func ReadTimeout(reader *bufio.Reader, timeout time.Duration) (*Header, error) {
 		read <- h
 	}()
 
-	for {
-		select {
-		case result := <-read:
-			return result.h, result.e
-		case <-time.After(timeout):
-			return nil, ErrNoProxyProtocol
-		}
+	timer := time.NewTimer(timeout)
+	select {
+	case result := <-read:
+		timer.Stop()
+		return result.h, result.e
+	case <-timer.C:
+		return nil, ErrNoProxyProtocol
 	}
 }
