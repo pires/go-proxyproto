@@ -32,13 +32,27 @@ var (
 
 // Header is the placeholder for proxy protocol header.
 type Header struct {
-	Version            byte
-	Command            ProtocolVersionAndCommand
-	TransportProtocol  AddressFamilyAndProtocol
-	SourceAddress      net.IP
-	DestinationAddress net.IP
-	SourcePort         uint16
-	DestinationPort    uint16
+	Version           byte
+	Command           ProtocolVersionAndCommand
+	TransportProtocol AddressFamilyAndProtocol
+	SourceIP          net.IP
+	DestinationIP     net.IP
+	SourcePort        uint16
+	DestinationPort   uint16
+}
+
+func (header *Header) RemoteAddr() net.Addr {
+	return &net.TCPAddr{
+		IP:   header.SourceIP,
+		Port: int(header.SourcePort),
+	}
+}
+
+func (header *Header) LocalAddr() net.Addr {
+	return &net.TCPAddr{
+		IP:   header.DestinationIP,
+		Port: int(header.DestinationPort),
+	}
 }
 
 // EqualTo returns true if headers are equivalent, false otherwise.
@@ -50,8 +64,8 @@ func (header *Header) EqualTo(q *Header) bool {
 		return true
 	}
 	return header.TransportProtocol == q.TransportProtocol &&
-		header.SourceAddress.String() == q.SourceAddress.String() &&
-		header.DestinationAddress.String() == q.DestinationAddress.String() &&
+		header.SourceIP.String() == q.SourceIP.String() &&
+		header.DestinationIP.String() == q.DestinationIP.String() &&
 		header.SourcePort == q.SourcePort &&
 		header.DestinationPort == q.DestinationPort
 }
