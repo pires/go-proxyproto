@@ -41,6 +41,20 @@ type Header struct {
 	DestinationPort    uint16
 }
 
+func (header *Header) RemoteAddr() net.Addr {
+	return &net.TCPAddr{
+		IP:   header.SourceAddress,
+		Port: int(header.SourcePort),
+	}
+}
+
+func (header *Header) LocalAddr() net.Addr {
+	return &net.TCPAddr{
+		IP:   header.DestinationAddress,
+		Port: int(header.DestinationPort),
+	}
+}
+
 // EqualTo returns true if headers are equivalent, false otherwise.
 // Deprecated: use EqualsTo instead. This method will eventually be removed.
 func (header *Header) EqualTo(otherHeader *Header) bool {
