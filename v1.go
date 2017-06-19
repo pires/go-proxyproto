@@ -3,7 +3,6 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -46,11 +45,11 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	}
 
 	// Read addresses and ports
-	header.SourceAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[2])
+	header.SourceIP, err = parseV1IPAddress(header.TransportProtocol, tokens[2])
 	if err != nil {
 		return nil, err
 	}
-	header.DestinationAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[3])
+	header.DestinationIP, err = parseV1IPAddress(header.TransportProtocol, tokens[3])
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +64,7 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	return header, nil
 }
 
-func (header *Header) writeVersion1(w io.Writer) (int64, error) {
+func (header *Header) formatVersion1() ([]byte, error) {
 	// As of version 1, only "TCP4" ( \x54 \x43 \x50 \x34 ) for TCP over IPv4,
 	// and "TCP6" ( \x54 \x43 \x50 \x36 ) for TCP over IPv6 are allowed.
 	proto := "UNKNOWN"
@@ -80,16 +79,16 @@ func (header *Header) writeVersion1(w io.Writer) (int64, error) {
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(proto)
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(header.SourceAddress.String())
+	buf.WriteString(header.SourceIP.String())
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(header.DestinationAddress.String())
+	buf.WriteString(header.DestinationIP.String())
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(strconv.Itoa(int(header.SourcePort)))
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(strconv.Itoa(int(header.DestinationPort)))
 	buf.WriteString(CRLF)
 
-	return buf.WriteTo(w)
+	return buf.Bytes(), nil
 }
 
 func parseV1PortNumber(portStr string) (uint16, error) {

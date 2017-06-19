@@ -102,8 +102,8 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if err := binary.Read(io.LimitReader(reader, int64(length)), binary.BigEndian, &addr); err != nil {
 			return nil, ErrInvalidAddress
 		}
-		header.SourceAddress = addr.Src[:]
-		header.DestinationAddress = addr.Dst[:]
+		header.SourceIP = addr.Src[:]
+		header.DestinationIP = addr.Dst[:]
 		header.SourcePort = addr.SrcPort
 		header.DestinationPort = addr.DstPort
 	} else if header.TransportProtocol.IsIPv6() {
@@ -111,8 +111,8 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if err := binary.Read(io.LimitReader(reader, int64(length)), binary.BigEndian, &addr); err != nil {
 			return nil, ErrInvalidAddress
 		}
-		header.SourceAddress = addr.Src[:]
-		header.DestinationAddress = addr.Dst[:]
+		header.SourceIP = addr.Src[:]
+		header.DestinationIP = addr.Dst[:]
 		header.SourcePort = addr.SrcPort
 		header.DestinationPort = addr.DstPort
 	}
@@ -123,10 +123,10 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	//			return nil, ErrInvalidAddress
 	//		}
 	//
-	//if header.SourceAddress, err = net.ResolveUnixAddr("unix", string(addr.Src[:])); err != nil {
+	//if header.SourceIP, err = net.ResolveUnixAddr("unix", string(addr.Src[:])); err != nil {
 	//	return nil, ErrCantResolveSourceUnixAddress
 	//}
-	//if header.DestinationAddress, err = net.ResolveUnixAddr("unix", string(addr.Dst[:])); err != nil {
+	//if header.DestinationIP, err = net.ResolveUnixAddr("unix", string(addr.Dst[:])); err != nil {
 	//	return nil, ErrCantResolveDestinationUnixAddress
 	//}
 	//}
@@ -136,7 +136,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	return header, nil
 }
 
-func (header *Header) writeVersion2(w io.Writer) (int64, error) {
+func (header *Header) formatVersion2() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.Write(SIGV2)
 	buf.WriteByte(header.Command.toByte())
@@ -146,17 +146,17 @@ func (header *Header) writeVersion2(w io.Writer) (int64, error) {
 		var addrSrc, addrDst []byte
 		if header.TransportProtocol.IsIPv4() {
 			buf.Write(lengthV4Bytes)
-			addrSrc = header.SourceAddress.To4()
-			addrDst = header.DestinationAddress.To4()
+			addrSrc = header.SourceIP.To4()
+			addrDst = header.DestinationIP.To4()
 		} else if header.TransportProtocol.IsIPv6() {
 			buf.Write(lengthV6Bytes)
-			addrSrc = header.SourceAddress.To16()
-			addrDst = header.DestinationAddress.To16()
+			addrSrc = header.SourceIP.To16()
+			addrDst = header.DestinationIP.To16()
 		} else if header.TransportProtocol.IsUnix() {
 			buf.Write(lengthUnixBytes)
 			// TODO is below right?
-			addrSrc = []byte(header.SourceAddress.String())
-			addrDst = []byte(header.DestinationAddress.String())
+			addrSrc = []byte(header.SourceIP.String())
+			addrDst = []byte(header.DestinationIP.String())
 		}
 		buf.Write(addrSrc)
 		buf.Write(addrDst)
@@ -177,7 +177,7 @@ func (header *Header) writeVersion2(w io.Writer) (int64, error) {
 
 	}
 
-	return buf.WriteTo(w)
+	return buf.Bytes(), nil
 }
 
 func (header *Header) validateLength(length uint16) bool {

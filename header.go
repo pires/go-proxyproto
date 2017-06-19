@@ -41,6 +41,41 @@ type Header struct {
 	DestinationPort   uint16
 }
 
+func NewHeaderFromConn(conn net.Conn, version byte, command ProtocolVersionAndCommand) (hdr *Header) {
+	hdr = &Header{
+		Version: version,
+		Command: command,
+	}
+
+	switch conn.RemoteAddr().(type) {
+	case *net.UnixAddr:
+		hdr.TransportProtocol = UnixStream
+	case *net.TCPAddr:
+		hdr.TransportProtocol = TCPv6
+		if conn.RemoteAddr().(*net.TCPAddr).IP.To4() != nil {
+			hdr.TransportProtocol = TCPv4
+		}
+
+		hdr.SourceIP = conn.RemoteAddr().(*net.TCPAddr).IP
+		hdr.SourcePort = uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
+		hdr.DestinationIP = conn.LocalAddr().(*net.TCPAddr).IP
+		hdr.DestinationPort = uint16(conn.LocalAddr().(*net.TCPAddr).Port)
+	case *net.UDPAddr:
+		hdr.TransportProtocol = UDPv6
+		if conn.RemoteAddr().(*net.UDPAddr).IP.To4() != nil {
+			hdr.TransportProtocol = UDPv4
+		}
+		hdr.SourceIP = conn.RemoteAddr().(*net.UDPAddr).IP
+		hdr.SourcePort = uint16(conn.RemoteAddr().(*net.UDPAddr).Port)
+		hdr.DestinationIP = conn.LocalAddr().(*net.UDPAddr).IP
+		hdr.DestinationPort = uint16(conn.LocalAddr().(*net.UDPAddr).Port)
+	default:
+		hdr.TransportProtocol = UNSPEC
+	}
+
+	return hdr
+}
+
 func (header *Header) RemoteAddr() net.Addr {
 	return &net.TCPAddr{
 		IP:   header.SourceIP,
@@ -72,13 +107,23 @@ func (header *Header) EqualTo(q *Header) bool {
 
 // WriteTo renders a proxy protocol header in a format to write over the wire.
 func (header *Header) WriteTo(w io.Writer) (int64, error) {
+	buf, err := header.Format()
+	if err != nil {
+		return 0, err
+	}
+
+	return bytes.NewBuffer(buf).WriteTo(w)
+}
+
+// WriteTo renders a proxy protocol header in a format to write over the wire.
+func (header *Header) Format() ([]byte, error) {
 	switch header.Version {
 	case 1:
-		return header.writeVersion1(w)
+		return header.formatVersion1()
 	case 2:
-		return header.writeVersion2(w)
+		return header.formatVersion2()
 	default:
-		return 0, ErrUnknownProxyProtocolVersion
+		return nil, ErrUnknownProxyProtocolVersion
 	}
 }
 
