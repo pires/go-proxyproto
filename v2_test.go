@@ -93,66 +93,66 @@ func TestParseV2Invalid(t *testing.T) {
 
 var validParseAndWriteV2Tests = []struct {
 	reader         *bufio.Reader
-	expectedHeader *Header
+	expectedHeader *v1header
 }{
 	// LOCAL
 	{
 		newBufioReader(append(SIGV2, LOCAL)),
-		&Header{
+		&v1header{
 			Version: 2,
-			Command: LOCAL,
+			command: LOCAL,
 		},
 	},
 	// PROXY TCP IPv4
 	{
 		newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureIPv4V2...)),
-		&Header{
+		&v1header{
 			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			command:            PROXY,
+			transportProtocol:  TCPv4,
+			sourceAddress:      v4addr,
+			destinationAddress: v4addr,
+			sourcePort:         PORT,
+			destinationPort:    PORT,
 		},
 	},
 	// PROXY TCP IPv6
 	{
 		newBufioReader(append(append(SIGV2, PROXY, TCPv6), fixtureIPv6V2...)),
-		&Header{
+		&v1header{
 			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			command:            PROXY,
+			transportProtocol:  TCPv6,
+			sourceAddress:      v6addr,
+			destinationAddress: v6addr,
+			sourcePort:         PORT,
+			destinationPort:    PORT,
 		},
 	},
 	// PROXY UDP IPv4
 	{
 		newBufioReader(append(append(SIGV2, PROXY, UDPv4), fixtureIPv4V2...)),
-		&Header{
+		&v1header{
 			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  UDPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			command:            PROXY,
+			transportProtocol:  UDPv4,
+			sourceAddress:      v4addr,
+			destinationAddress: v4addr,
+			sourcePort:         PORT,
+			destinationPort:    PORT,
 		},
 	},
 	// PROXY UDP IPv6
 	{
 		newBufioReader(append(append(SIGV2, PROXY, UDPv6), fixtureIPv6V2...)),
-		&Header{
+		&v1header{
 			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  UDPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			command:            PROXY,
+			transportProtocol:  UDPv6,
+			sourceAddress:      v6addr,
+			destinationAddress: v6addr,
+			sourcePort:         PORT,
+			destinationPort:    PORT,
 		},
 	},
 	// TODO add tests for Unix stream and datagram

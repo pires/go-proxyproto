@@ -13,15 +13,14 @@ const (
 	SEPARATOR = " "
 )
 
-func initVersion1() *Header {
-	header := new(Header)
-	header.Version = 1
-	// Command doesn't exist in v1
-	header.Command = PROXY
+func initVersion1() *v1header {
+	header := new(v1header)
+	// command doesn't exist in v1
+	header.command = PROXY
 	return header
 }
 
-func parseVersion1(reader *bufio.Reader) (*Header, error) {
+func parseVersion1(reader *bufio.Reader) (*v1header, error) {
 	// Make sure we have a v1 header
 	line, err := reader.ReadString('\n')
 	if !strings.HasSuffix(line, CRLF) {
@@ -37,40 +36,40 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	// Read address family and protocol
 	switch tokens[1] {
 	case "TCP4":
-		header.TransportProtocol = TCPv4
+		header.transportProtocol = TCPv4
 	case "TCP6":
-		header.TransportProtocol = TCPv6
+		header.transportProtocol = TCPv6
 	default:
-		header.TransportProtocol = UNSPEC
+		header.transportProtocol = UNSPEC
 	}
 
 	// Read addresses and ports
-	header.SourceAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[2])
+	header.sourceAddress, err = parseV1IPAddress(header.transportProtocol, tokens[2])
 	if err != nil {
 		return nil, err
 	}
-	header.DestinationAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[3])
+	header.destinationAddress, err = parseV1IPAddress(header.transportProtocol, tokens[3])
 	if err != nil {
 		return nil, err
 	}
-	header.SourcePort, err = parseV1PortNumber(tokens[4])
+	header.sourcePort, err = parseV1PortNumber(tokens[4])
 	if err != nil {
 		return nil, err
 	}
-	header.DestinationPort, err = parseV1PortNumber(tokens[5])
+	header.destinationPort, err = parseV1PortNumber(tokens[5])
 	if err != nil {
 		return nil, err
 	}
 	return header, nil
 }
 
-func (header *Header) formatVersion1() ([]byte, error) {
+func (header *v1header) Format() ([]byte, error) {
 	// As of version 1, only "TCP4" ( \x54 \x43 \x50 \x34 ) for TCP over IPv4,
 	// and "TCP6" ( \x54 \x43 \x50 \x36 ) for TCP over IPv6 are allowed.
 	proto := "UNKNOWN"
-	if header.TransportProtocol == TCPv4 {
+	if header.transportProtocol == TCPv4 {
 		proto = "TCP4"
-	} else if header.TransportProtocol == TCPv6 {
+	} else if header.transportProtocol == TCPv6 {
 		proto = "TCP6"
 	}
 
@@ -79,13 +78,13 @@ func (header *Header) formatVersion1() ([]byte, error) {
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(proto)
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(header.SourceAddress.String())
+	buf.WriteString(header.sourceAddress.String())
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(header.DestinationAddress.String())
+	buf.WriteString(header.destinationAddress.String())
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(strconv.Itoa(int(header.SourcePort)))
+	buf.WriteString(strconv.Itoa(int(header.sourcePort)))
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(strconv.Itoa(int(header.DestinationPort)))
+	buf.WriteString(strconv.Itoa(int(header.destinationPort)))
 	buf.WriteString(CRLF)
 
 	return buf.Bytes(), nil

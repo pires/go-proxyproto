@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"io"
 	"net"
 	"time"
 )
@@ -30,101 +29,45 @@ var (
 	ErrInvalidPortNumber                    = errors.New("Invalid port number")
 )
 
-// Header is the placeholder for proxy protocol header.
-type Header struct {
-	Version            byte
-	Command            ProtocolVersionAndCommand
-	TransportProtocol  AddressFamilyAndProtocol
-	SourceAddress      net.IP
-	DestinationAddress net.IP
-	SourcePort         uint16
-	DestinationPort    uint16
+type header interface {
+	Version() int
+	RemoteAddr() net.Addr
+	LocalAddr() net.Addr
+	Format() ([]byte, error)
 }
 
-func NewHeaderFromConn(conn net.Conn, version byte, command ProtocolVersionAndCommand) (hdr *Header) {
-	hdr = &Header{
-		Version: version,
-		Command: command,
+func NewHeaderFromConn(conn net.Conn, version byte, command ProtocolVersionAndCommand) (hdr *v1header) {
+	hdr = &v1header{
+		command: command,
 	}
 
 	switch conn.RemoteAddr().(type) {
 	case *net.UnixAddr:
-		hdr.TransportProtocol = UnixStream
+		hdr.transportProtocol = UnixStream
 	case *net.TCPAddr:
-		hdr.TransportProtocol = TCPv6
+		hdr.transportProtocol = TCPv6
 		if conn.RemoteAddr().(*net.TCPAddr).IP.To4() != nil {
-			hdr.TransportProtocol = TCPv4
+			hdr.transportProtocol = TCPv4
 		}
 
-		hdr.SourceAddress = conn.RemoteAddr().(*net.TCPAddr).IP
-		hdr.SourcePort = uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
-		hdr.DestinationAddress = conn.LocalAddr().(*net.TCPAddr).IP
-		hdr.DestinationPort = uint16(conn.LocalAddr().(*net.TCPAddr).Port)
+		hdr.sourceAddress = conn.RemoteAddr().(*net.TCPAddr).IP
+		hdr.sourcePort = uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
+		hdr.destinationAddress = conn.LocalAddr().(*net.TCPAddr).IP
+		hdr.destinationPort = uint16(conn.LocalAddr().(*net.TCPAddr).Port)
 	case *net.UDPAddr:
-		hdr.TransportProtocol = UDPv6
+		hdr.transportProtocol = UDPv6
 		if conn.RemoteAddr().(*net.UDPAddr).IP.To4() != nil {
-			hdr.TransportProtocol = UDPv4
+			hdr.transportProtocol = UDPv4
 		}
-		hdr.SourceAddress = conn.RemoteAddr().(*net.UDPAddr).IP
-		hdr.SourcePort = uint16(conn.RemoteAddr().(*net.UDPAddr).Port)
-		hdr.DestinationAddress = conn.LocalAddr().(*net.UDPAddr).IP
-		hdr.DestinationPort = uint16(conn.LocalAddr().(*net.UDPAddr).Port)
+		hdr.sourceAddress = conn.RemoteAddr().(*net.UDPAddr).IP
+		hdr.sourcePort = uint16(conn.RemoteAddr().(*net.UDPAddr).Port)
+		hdr.destinationAddress = conn.LocalAddr().(*net.UDPAddr).IP
+		hdr.destinationPort = uint16(conn.LocalAddr().(*net.UDPAddr).Port)
 	default:
-		hdr.TransportProtocol = UNSPEC
+		hdr.transportProtocol = UNSPEC
 	}
 
 	return hdr
-}
-
-func (header *Header) RemoteAddr() net.Addr {
-	return &net.TCPAddr{
-		IP:   header.SourceAddress,
-		Port: int(header.SourcePort),
-	}
-}
-
-func (header *Header) LocalAddr() net.Addr {
-	return &net.TCPAddr{
-		IP:   header.DestinationAddress,
-		Port: int(header.DestinationPort),
-	}
-}
-
-// EqualTo returns true if headers are equivalent, false otherwise.
-func (header *Header) EqualTo(q *Header) bool {
-	if header == nil || q == nil {
-		return false
-	}
-	if header.Command.IsLocal() {
-		return true
-	}
-	return header.TransportProtocol == q.TransportProtocol &&
-		header.SourceAddress.String() == q.SourceAddress.String() &&
-		header.DestinationAddress.String() == q.DestinationAddress.String() &&
-		header.SourcePort == q.SourcePort &&
-		header.DestinationPort == q.DestinationPort
-}
-
-// WriteTo renders a proxy protocol header in a format to write over the wire.
-func (header *Header) WriteTo(w io.Writer) (int64, error) {
-	buf, err := header.Format()
-	if err != nil {
-		return 0, err
-	}
-
-	return bytes.NewBuffer(buf).WriteTo(w)
-}
-
-// WriteTo renders a proxy protocol header in a format to write over the wire.
-func (header *Header) Format() ([]byte, error) {
-	switch header.Version {
-	case 1:
-		return header.formatVersion1()
-	case 2:
-		return header.formatVersion2()
-	default:
-		return nil, ErrUnknownProxyProtocolVersion
-	}
 }
 
 // Read identifies the proxy protocol version and reads the remaining of
@@ -136,7 +79,7 @@ func (header *Header) Format() ([]byte, error) {
 // If proxy protocol header signature is present but an error is raised while processing
 // the remaining header, assume the reader buffer to be in a corrupt state.
 // Also, this operation will block until enough bytes are available for peeking.
-func Read(reader *bufio.Reader) (*Header, error) {
+func Read(reader *bufio.Reader) (header, error) {
 	// In order to improve speed for small non-PROXYed packets, take a peek at the first byte alone.
 	if b1, err := reader.Peek(1); err == nil && (bytes.Equal(b1[:1], SIGV1[:1]) || bytes.Equal(b1[:1], SIGV2[:1])) {
 		if signature, err := reader.Peek(5); err == nil && bytes.Equal(signature[:5], SIGV1) {
@@ -151,15 +94,15 @@ func Read(reader *bufio.Reader) (*Header, error) {
 
 // ReadTimeout acts as Read but takes a timeout. If that timeout is reached, it's assumed
 // there's no proxy protocol header.
-func ReadTimeout(reader *bufio.Reader, timeout time.Duration) (*Header, error) {
-	type header struct {
-		h *Header
+func ReadTimeout(reader *bufio.Reader, timeout time.Duration) (header, error) {
+	type localHeader struct {
+		h header
 		e error
 	}
-	read := make(chan *header, 1)
+	read := make(chan *localHeader, 1)
 
 	go func() {
-		h := &header{}
+		h := &localHeader{}
 		h.h, h.e = Read(reader)
 		read <- h
 	}()

@@ -56,30 +56,30 @@ func TestReadV1Invalid(t *testing.T) {
 
 var validParseAndWriteV1Tests = []struct {
 	reader         *bufio.Reader
-	expectedHeader *Header
+	expectedHeader *v1header
 }{
 	{
 		bufio.NewReader(strings.NewReader(fixtureTCP4V1)),
-		&Header{
+		&v1header{
 			Version:            1,
-			Command:            PROXY,
-			TransportProtocol:  TCPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			command:            PROXY,
+			transportProtocol:  TCPv4,
+			sourceAddress:      v4addr,
+			destinationAddress: v4addr,
+			sourcePort:         PORT,
+			destinationPort:    PORT,
 		},
 	},
 	{
 		bufio.NewReader(strings.NewReader(fixtureTCP6V1)),
-		&Header{
+		&v1header{
 			Version:            1,
-			Command:            PROXY,
-			TransportProtocol:  TCPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			command:            PROXY,
+			transportProtocol:  TCPv6,
+			sourceAddress:      v6addr,
+			destinationAddress: v6addr,
+			sourcePort:         PORT,
+			destinationPort:    PORT,
 		},
 	},
 }

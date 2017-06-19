@@ -2,6 +2,8 @@ package proxyproto
 
 import (
 	"bufio"
+	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"sync"
 	"time"
@@ -13,7 +15,7 @@ import (
 // the correct client address.
 //
 // Optionally define ProxyHeaderTimeout to set a maximum time to
-// receive the Proxy Protocol Header. Zero means no timeout.
+// receive the Proxy Protocol v1header. Zero means no timeout.
 type Listener struct {
 	Listener           net.Listener
 	ProxyHeaderTimeout time.Duration
@@ -25,9 +27,11 @@ type Listener struct {
 type Conn struct {
 	bufReader          *bufio.Reader
 	conn               net.Conn
-	header             *Header
+	header             header
 	once               sync.Once
 	proxyHeaderTimeout time.Duration
+
+	TLS *tls.ConnectionState
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -64,64 +68,85 @@ func NewConn(conn net.Conn, timeout time.Duration) *Conn {
 // Read is check for the proxy protocol header when doing
 // the initial scan. If there is an error parsing the header,
 // it is returned and the socket is closed.
-func (p *Conn) Read(b []byte) (int, error) {
+func (c *Conn) Read(b []byte) (int, error) {
 	var err error
-	p.once.Do(func() {
-		err = p.readHeader()
+	c.once.Do(func() {
+		err = c.readHeader()
 	})
 	if err != nil {
 		return 0, err
 	}
-	return p.bufReader.Read(b)
+	return c.bufReader.Read(b)
 }
 
-func (p *Conn) Write(b []byte) (int, error) {
-	return p.conn.Write(b)
+func (c *Conn) Write(b []byte) (int, error) {
+	return c.conn.Write(b)
 }
 
-func (p *Conn) Close() error {
-	return p.conn.Close()
+func (c *Conn) Close() error {
+	return c.conn.Close()
 }
 
-func (p *Conn) LocalAddr() net.Addr {
-	p.once.Do(func() { p.readHeader() })
-	if p.header == nil {
-		return p.conn.LocalAddr()
+func (c *Conn) LocalAddr() net.Addr {
+	c.once.Do(func() { c.readHeader() })
+	if c.header == nil {
+		return c.conn.LocalAddr()
 	}
 
-	return p.header.LocalAddr()
+	return c.header.LocalAddr()
 }
 
 // RemoteAddr returns the address of the client if the proxy
 // protocol is being used, otherwise just returns the address of
 // the socket peer.
-func (p *Conn) RemoteAddr() net.Addr {
-	p.once.Do(func() { p.readHeader() })
-	if p.header == nil {
-		return p.conn.RemoteAddr()
+func (c *Conn) RemoteAddr() net.Addr {
+	c.once.Do(func() { c.readHeader() })
+	if c.header == nil {
+		return c.conn.RemoteAddr()
 	}
 
-	return p.header.RemoteAddr()
+	return c.header.RemoteAddr()
 }
 
-func (p *Conn) SetDeadline(t time.Time) error {
-	return p.conn.SetDeadline(t)
+func (c *Conn) SetDeadline(t time.Time) error {
+	return c.conn.SetDeadline(t)
 }
 
-func (p *Conn) SetReadDeadline(t time.Time) error {
-	return p.conn.SetReadDeadline(t)
+func (c *Conn) SetReadDeadline(t time.Time) error {
+	return c.conn.SetReadDeadline(t)
 }
 
-func (p *Conn) SetWriteDeadline(t time.Time) error {
-	return p.conn.SetWriteDeadline(t)
+func (c *Conn) SetWriteDeadline(t time.Time) error {
+	return c.conn.SetWriteDeadline(t)
 }
 
-func (p *Conn) readHeader() error {
-	hdr, err := Read(p.bufReader)
+func (c *Conn) readHeader() error {
+	hdr, err := Read(c.bufReader)
 	if err != nil {
 		return err
 	}
-	p.header = hdr
-	return nil
+	c.header = hdr
 
+	if v2Hdr, ok := hdr.(*v2header); ok && v2Hdr.SslClientSsl {
+		c.setTlsStateFromHeader(v2Hdr)
+	}
+
+	return nil
+}
+
+func (c *Conn) setTlsStateFromHeader(hdr *v2header) {
+	c.TLS = &tls.ConnectionState{
+		Version:                     tls.VersionTLS12, // TODO: Convert from string to uint16?
+		HandshakeComplete:           true,
+		DidResume:                   hdr.SslClientCertConn == false,
+		CipherSuite:                 0,    // TODO: Convert from string to uint16?
+		NegotiatedProtocol:          "",   // TODO
+		NegotiatedProtocolIsMutual:  true, // TODO
+		ServerName:                  hdr.Authority,
+		PeerCertificates:            make([]*x509.Certificate, 0),
+		VerifiedChains:              make([][]*x509.Certificate, 0),
+		SignedCertificateTimestamps: make([][]byte, 0),
+		OCSPResponse:                make([]byte, 0),
+		TLSUnique:                   make([]byte, 0),
+	}
 }
