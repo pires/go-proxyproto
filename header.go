@@ -32,13 +32,13 @@ var (
 
 // Header is the placeholder for proxy protocol header.
 type Header struct {
-	Version           byte
-	Command           ProtocolVersionAndCommand
-	TransportProtocol AddressFamilyAndProtocol
-	SourceIP          net.IP
-	DestinationIP     net.IP
-	SourcePort        uint16
-	DestinationPort   uint16
+	Version            byte
+	Command            ProtocolVersionAndCommand
+	TransportProtocol  AddressFamilyAndProtocol
+	SourceAddress      net.IP
+	DestinationAddress net.IP
+	SourcePort         uint16
+	DestinationPort    uint16
 }
 
 func NewHeaderFromConn(conn net.Conn, version byte, command ProtocolVersionAndCommand) (hdr *Header) {
@@ -56,18 +56,18 @@ func NewHeaderFromConn(conn net.Conn, version byte, command ProtocolVersionAndCo
 			hdr.TransportProtocol = TCPv4
 		}
 
-		hdr.SourceIP = conn.RemoteAddr().(*net.TCPAddr).IP
+		hdr.SourceAddress = conn.RemoteAddr().(*net.TCPAddr).IP
 		hdr.SourcePort = uint16(conn.RemoteAddr().(*net.TCPAddr).Port)
-		hdr.DestinationIP = conn.LocalAddr().(*net.TCPAddr).IP
+		hdr.DestinationAddress = conn.LocalAddr().(*net.TCPAddr).IP
 		hdr.DestinationPort = uint16(conn.LocalAddr().(*net.TCPAddr).Port)
 	case *net.UDPAddr:
 		hdr.TransportProtocol = UDPv6
 		if conn.RemoteAddr().(*net.UDPAddr).IP.To4() != nil {
 			hdr.TransportProtocol = UDPv4
 		}
-		hdr.SourceIP = conn.RemoteAddr().(*net.UDPAddr).IP
+		hdr.SourceAddress = conn.RemoteAddr().(*net.UDPAddr).IP
 		hdr.SourcePort = uint16(conn.RemoteAddr().(*net.UDPAddr).Port)
-		hdr.DestinationIP = conn.LocalAddr().(*net.UDPAddr).IP
+		hdr.DestinationAddress = conn.LocalAddr().(*net.UDPAddr).IP
 		hdr.DestinationPort = uint16(conn.LocalAddr().(*net.UDPAddr).Port)
 	default:
 		hdr.TransportProtocol = UNSPEC
@@ -78,14 +78,14 @@ func NewHeaderFromConn(conn net.Conn, version byte, command ProtocolVersionAndCo
 
 func (header *Header) RemoteAddr() net.Addr {
 	return &net.TCPAddr{
-		IP:   header.SourceIP,
+		IP:   header.SourceAddress,
 		Port: int(header.SourcePort),
 	}
 }
 
 func (header *Header) LocalAddr() net.Addr {
 	return &net.TCPAddr{
-		IP:   header.DestinationIP,
+		IP:   header.DestinationAddress,
 		Port: int(header.DestinationPort),
 	}
 }
@@ -99,8 +99,8 @@ func (header *Header) EqualTo(q *Header) bool {
 		return true
 	}
 	return header.TransportProtocol == q.TransportProtocol &&
-		header.SourceIP.String() == q.SourceIP.String() &&
-		header.DestinationIP.String() == q.DestinationIP.String() &&
+		header.SourceAddress.String() == q.SourceAddress.String() &&
+		header.DestinationAddress.String() == q.DestinationAddress.String() &&
 		header.SourcePort == q.SourcePort &&
 		header.DestinationPort == q.DestinationPort
 }

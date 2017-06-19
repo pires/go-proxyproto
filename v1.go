@@ -45,11 +45,11 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	}
 
 	// Read addresses and ports
-	header.SourceIP, err = parseV1IPAddress(header.TransportProtocol, tokens[2])
+	header.SourceAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[2])
 	if err != nil {
 		return nil, err
 	}
-	header.DestinationIP, err = parseV1IPAddress(header.TransportProtocol, tokens[3])
+	header.DestinationAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[3])
 	if err != nil {
 		return nil, err
 	}
@@ -79,9 +79,9 @@ func (header *Header) formatVersion1() ([]byte, error) {
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(proto)
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(header.SourceIP.String())
+	buf.WriteString(header.SourceAddress.String())
 	buf.WriteString(SEPARATOR)
-	buf.WriteString(header.DestinationIP.String())
+	buf.WriteString(header.DestinationAddress.String())
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(strconv.Itoa(int(header.SourcePort)))
 	buf.WriteString(SEPARATOR)
