@@ -4,11 +4,26 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"reflect"
 	"testing"
 )
 
 var (
 	invalidRune = byte('\x99')
+
+	// Lengths to use in tests
+	lengthPadded = uint16(84)
+
+	lengthEmptyBytes = func() []byte {
+		a := make([]byte, 2)
+		binary.BigEndian.PutUint16(a, 0)
+		return a
+	}()
+	lengthPaddedBytes = func() []byte {
+		a := make([]byte, 2)
+		binary.BigEndian.PutUint16(a, lengthPadded)
+		return a
+	}()
 
 	// If life gives you lemons, make mojitos
 	portBytes = func() []byte {
@@ -23,10 +38,15 @@ var (
 	ports         = append(portBytes, portBytes...)
 
 	// Fixtures to use in tests
-	fixtureIPv4Address = append(addressesIPv4, ports...)
-	fixtureIPv4V2      = append(lengthV4Bytes, fixtureIPv4Address...)
-	fixtureIPv6Address = append(addressesIPv6, ports...)
-	fixtureIPv6V2      = append(lengthV6Bytes, fixtureIPv6Address...)
+	fixtureIPv4Address  = append(addressesIPv4, ports...)
+	fixtureIPv4V2       = append(lengthV4Bytes, fixtureIPv4Address...)
+	fixtureIPv4V2Padded = append(append(lengthPaddedBytes, fixtureIPv4Address...), make([]byte, lengthPadded-lengthV4)...)
+	fixtureIPv6Address  = append(addressesIPv6, ports...)
+	fixtureIPv6V2       = append(lengthV6Bytes, fixtureIPv6Address...)
+	fixtureIPv6V2Padded = append(append(lengthPaddedBytes, fixtureIPv6Address...), make([]byte, lengthPadded-lengthV6)...)
+
+	// Arbitrary bytes following proxy bytes
+	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
 )
 
 var invalidParseV2Tests = []struct {
@@ -74,7 +94,7 @@ var invalidParseV2Tests = []struct {
 		ErrInvalidLength,
 	},
 	{
-		newBufioReader(append(append(append(SIGV2, PROXY, TCPv4), lengthV6Bytes...), fixtureIPv6Address...)),
+		newBufioReader(append(append(append(SIGV2, PROXY, TCPv4), lengthEmptyBytes...), fixtureIPv6Address...)),
 		ErrInvalidLength,
 	},
 	{
@@ -188,6 +208,87 @@ func TestWriteV2Valid(t *testing.T) {
 
 		if !newHeader.EqualTo(tt.expectedHeader) {
 			t.Fatalf("TestWriteVersion2: expected %#v, actual %#v", tt.expectedHeader, newHeader)
+		}
+	}
+}
+
+var validParseV2PaddedTests = []struct {
+	value          []byte
+	expectedHeader *Header
+}{
+	// PROXY TCP IPv4
+	{
+		append(append(SIGV2, PROXY, TCPv4), fixtureIPv4V2Padded...),
+		&Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv4,
+			SourceAddress:      v4addr,
+			DestinationAddress: v4addr,
+			SourcePort:         PORT,
+			DestinationPort:    PORT,
+		},
+	},
+	// PROXY TCP IPv6
+	{
+		append(append(SIGV2, PROXY, TCPv6), fixtureIPv6V2Padded...),
+		&Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv6,
+			SourceAddress:      v6addr,
+			DestinationAddress: v6addr,
+			SourcePort:         PORT,
+			DestinationPort:    PORT,
+		},
+	},
+	// PROXY UDP IPv4
+	{
+		append(append(SIGV2, PROXY, UDPv4), fixtureIPv4V2Padded...),
+		&Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  UDPv4,
+			SourceAddress:      v4addr,
+			DestinationAddress: v4addr,
+			SourcePort:         PORT,
+			DestinationPort:    PORT,
+		},
+	},
+	// PROXY UDP IPv6
+	{
+		append(append(SIGV2, PROXY, UDPv6), fixtureIPv6V2Padded...),
+		&Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  UDPv6,
+			SourceAddress:      v6addr,
+			DestinationAddress: v6addr,
+			SourcePort:         PORT,
+			DestinationPort:    PORT,
+		},
+	},
+}
+
+func TestParseV2Padded(t *testing.T) {
+	for _, tt := range validParseV2PaddedTests {
+		reader := newBufioReader(append(tt.value, arbitraryTailBytes...))
+
+		newHeader, err := Read(reader)
+		if err != nil {
+			t.Fatal("TestParseV2Padded: Unexpected error ", err)
+		}
+		if !newHeader.EqualTo(tt.expectedHeader) {
+			t.Fatalf("TestParseV2Padded: expected %#v, actual %#v", tt.expectedHeader, newHeader)
+		}
+
+		// Check that remaining padding bytes have been flushed
+		nextBytes, err := reader.Peek(len(arbitraryTailBytes))
+		if err != nil {
+			t.Fatal("TestParseV2Padded: Unexpected error ", err)
+		}
+		if !reflect.DeepEqual(nextBytes, arbitraryTailBytes) {
+			t.Fatalf("TestParseV2Padded: expected %#v, actual %#v", arbitraryTailBytes, nextBytes)
 		}
 	}
 }
