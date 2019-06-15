@@ -2,6 +2,7 @@ package proxyproto
 
 import (
 	"bufio"
+	"bytes"
 	"net"
 	"testing"
 	"time"
@@ -34,9 +35,9 @@ func TestReadTimeoutV1Invalid(t *testing.T) {
 	reader := bufio.NewReader(&b)
 	_, err := ReadTimeout(reader, 50*time.Millisecond)
 	if err == nil {
-		t.Fatalf("TestReadTimeoutV1Invalid: expected error %s", ErrNoProxyProtocol)
+		t.Fatalf("expected error %s", ErrNoProxyProtocol)
 	} else if err != ErrNoProxyProtocol {
-		t.Fatalf("TestReadTimeoutV1Invalid: expected %s, actual %s", ErrNoProxyProtocol, err)
+		t.Fatalf("expected %s, actual %s", ErrNoProxyProtocol, err)
 	}
 }
 
@@ -104,7 +105,166 @@ func TestEqualTo(t *testing.T) {
 
 	for _, tt := range headersEqual {
 		if actual := tt.this.EqualsTo(tt.that); actual != tt.expected {
-			t.Fatalf("TestEqualTo: expected %t, actual %t", tt.expected, actual)
+			t.Fatalf("expected %t, actual %t", tt.expected, actual)
+		}
+	}
+}
+
+func TestLocalAddr(t *testing.T) {
+	var headers = []struct {
+		header       *Header
+		expectedAddr net.Addr
+		expected     bool
+	}{
+		{
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			&net.TCPAddr{
+				IP:   net.ParseIP("20.2.2.2"),
+				Port: 2000,
+			},
+			true,
+		},
+		{
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			&net.TCPAddr{
+				IP:   net.ParseIP("10.1.1.1"),
+				Port: 1000,
+			},
+			false,
+		},
+	}
+
+	for _, tt := range headers {
+		actualAddr := tt.header.LocalAddr()
+		if actual := actualAddr.String() == tt.expectedAddr.String(); actual != tt.expected {
+			t.Fatalf("expected %t, actual %t for expectedAddr %+v and actualAddr %+v", tt.expected, actual, tt.expectedAddr, actualAddr)
+		}
+	}
+}
+
+func TestRemoteAddr(t *testing.T) {
+	var headers = []struct {
+		header       *Header
+		expectedAddr net.Addr
+		expected     bool
+	}{
+		{
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			&net.TCPAddr{
+				IP:   net.ParseIP("20.2.2.2"),
+				Port: 2000,
+			},
+			true,
+		},
+		{
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			&net.TCPAddr{
+				IP:   net.ParseIP("10.1.1.1"),
+				Port: 1000,
+			},
+			false,
+		},
+	}
+
+	for _, tt := range headers {
+		actualAddr := tt.header.LocalAddr()
+		if actual := actualAddr.String() == tt.expectedAddr.String(); actual != tt.expected {
+			t.Fatalf("expected %t, actual %t for expectedAddr %+v and actualAddr %+v", tt.expected, actual, tt.expectedAddr, actualAddr)
+		}
+	}
+}
+
+func TestWriteTo(t *testing.T) {
+	var buf bytes.Buffer
+
+	validHeader := &Header{
+		Version:            1,
+		Command:            PROXY,
+		TransportProtocol:  TCPv4,
+		SourceAddress:      net.ParseIP("10.1.1.1"),
+		SourcePort:         1000,
+		DestinationAddress: net.ParseIP("20.2.2.2"),
+		DestinationPort:    2000,
+	}
+
+	if _, err := validHeader.WriteTo(&buf); err != nil {
+		t.Fatalf("shouldn't have thrown error %q", err.Error())
+	}
+
+	invalidHeader := &Header{
+		SourceAddress:      net.ParseIP("10.1.1.1"),
+		SourcePort:         1000,
+		DestinationAddress: net.ParseIP("20.2.2.2"),
+		DestinationPort:    2000,
+	}
+
+	if _, err := invalidHeader.WriteTo(&buf); err == nil {
+		t.Fatalf("should have thrown error %q", err.Error())
+	}
+}
+
+func TestFormat(t *testing.T) {
+	validHeader := &Header{
+		Version:            1,
+		Command:            PROXY,
+		TransportProtocol:  TCPv4,
+		SourceAddress:      net.ParseIP("10.1.1.1"),
+		SourcePort:         1000,
+		DestinationAddress: net.ParseIP("20.2.2.2"),
+		DestinationPort:    2000,
+	}
+
+	if _, err := validHeader.Format(); err != nil {
+		t.Fatalf("shouldn't have thrown error %q", err.Error())
+	}
+
+	invalidHeader := &Header{
+		Version:            3,
+		Command:            PROXY,
+		TransportProtocol:  TCPv4,
+		SourceAddress:      net.ParseIP("10.1.1.1"),
+		SourcePort:         1000,
+		DestinationAddress: net.ParseIP("20.2.2.2"),
+		DestinationPort:    2000,
+	}
+
+	if _, err := invalidHeader.Format(); err == nil {
+		t.Fatalf("should have thrown error %q", err.Error())
+	} else {
+		if err != ErrUnknownProxyProtocolVersion {
+			t.Fatalf("expected %q, actual %q", ErrUnknownProxyProtocolVersion.Error(), err.Error())
 		}
 	}
 }
