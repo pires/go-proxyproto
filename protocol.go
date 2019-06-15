@@ -8,7 +8,7 @@ import (
 )
 
 // Listener is used to wrap an underlying listener,
-// whose connections may be using the HAProxy Proxy Protocol (version 1).
+// whose connections may be using the HAProxy Proxy Protocol.
 // If the connection is using the protocol, the RemoteAddr() will return
 // the correct client address.
 //
