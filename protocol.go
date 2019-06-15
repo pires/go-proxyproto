@@ -75,14 +75,19 @@ func (p *Conn) Read(b []byte) (int, error) {
 	return p.bufReader.Read(b)
 }
 
+// Write wraps original conn.Write
 func (p *Conn) Write(b []byte) (int, error) {
 	return p.conn.Write(b)
 }
 
+// Close wraps original conn.Close
 func (p *Conn) Close() error {
 	return p.conn.Close()
 }
 
+// LocalAddr returns the address of the server if the proxy
+// protocol is being used, otherwise just returns the address of
+// the socket server.
 func (p *Conn) LocalAddr() net.Addr {
 	p.once.Do(func() { p.readHeader() })
 	if p.header == nil {
@@ -104,14 +109,17 @@ func (p *Conn) RemoteAddr() net.Addr {
 	return p.header.RemoteAddr()
 }
 
+// SetDeadline wraps original conn.SetDeadline
 func (p *Conn) SetDeadline(t time.Time) error {
 	return p.conn.SetDeadline(t)
 }
 
+// SetReadDeadline wraps original conn.SetReadDeadline
 func (p *Conn) SetReadDeadline(t time.Time) error {
 	return p.conn.SetReadDeadline(t)
 }
 
+// SetWriteDeadline wraps original conn.SetWriteDeadline
 func (p *Conn) SetWriteDeadline(t time.Time) error {
 	return p.conn.SetWriteDeadline(t)
 }

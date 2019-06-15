@@ -41,6 +41,7 @@ type Header struct {
 	DestinationPort    uint16
 }
 
+// RemoteAddr returns the address of the remote endpoint of the connection.
 func (header *Header) RemoteAddr() net.Addr {
 	return &net.TCPAddr{
 		IP:   header.SourceAddress,
@@ -48,6 +49,7 @@ func (header *Header) RemoteAddr() net.Addr {
 	}
 }
 
+// LocalAddr returns the address of the local endpoint of the connection.
 func (header *Header) LocalAddr() net.Addr {
 	return &net.TCPAddr{
 		IP:   header.DestinationAddress,
@@ -77,7 +79,7 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 		header.DestinationPort == otherHeader.DestinationPort
 }
 
-// WriteTo renders a proxy protocol header in a format to write over the wire.
+// WriteTo renders a proxy protocol header in a format and writes it to an io.Writer.
 func (header *Header) WriteTo(w io.Writer) (int64, error) {
 	buf, err := header.Format()
 	if err != nil {
@@ -87,7 +89,7 @@ func (header *Header) WriteTo(w io.Writer) (int64, error) {
 	return bytes.NewBuffer(buf).WriteTo(w)
 }
 
-// WriteTo renders a proxy protocol header in a format to write over the wire.
+// Format renders a proxy protocol header in a format to write over the wire.
 func (header *Header) Format() ([]byte, error) {
 	switch header.Version {
 	case 1:
