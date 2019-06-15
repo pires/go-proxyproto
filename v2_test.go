@@ -106,7 +106,7 @@ var invalidParseV2Tests = []struct {
 func TestParseV2Invalid(t *testing.T) {
 	for _, tt := range invalidParseV2Tests {
 		if _, err := Read(tt.reader); err != tt.expectedError {
-			t.Fatalf("TestParseV2Invalid: expected %s, actual %s", tt.expectedError, err)
+			t.Fatalf("TestParseV2Invalid: expected %s, actual %s", tt.expectedError, err.Error())
 		}
 	}
 }
