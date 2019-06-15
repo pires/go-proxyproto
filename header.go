@@ -41,6 +41,22 @@ type Header struct {
 	DestinationPort    uint16
 }
 
+// RemoteAddr returns the address of the remote endpoint of the connection.
+func (header *Header) RemoteAddr() net.Addr {
+	return &net.TCPAddr{
+		IP:   header.SourceAddress,
+		Port: int(header.SourcePort),
+	}
+}
+
+// LocalAddr returns the address of the local endpoint of the connection.
+func (header *Header) LocalAddr() net.Addr {
+	return &net.TCPAddr{
+		IP:   header.DestinationAddress,
+		Port: int(header.DestinationPort),
+	}
+}
+
 // EqualTo returns true if headers are equivalent, false otherwise.
 // Deprecated: use EqualsTo instead. This method will eventually be removed.
 func (header *Header) EqualTo(otherHeader *Header) bool {
@@ -63,15 +79,25 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 		header.DestinationPort == otherHeader.DestinationPort
 }
 
-// WriteTo renders a proxy protocol header in a format to write over the wire.
+// WriteTo renders a proxy protocol header in a format and writes it to an io.Writer.
 func (header *Header) WriteTo(w io.Writer) (int64, error) {
+	buf, err := header.Format()
+	if err != nil {
+		return 0, err
+	}
+
+	return bytes.NewBuffer(buf).WriteTo(w)
+}
+
+// Format renders a proxy protocol header in a format to write over the wire.
+func (header *Header) Format() ([]byte, error) {
 	switch header.Version {
 	case 1:
-		return header.writeVersion1(w)
+		return header.formatVersion1()
 	case 2:
-		return header.writeVersion2(w)
+		return header.formatVersion2()
 	default:
-		return 0, ErrUnknownProxyProtocolVersion
+		return nil, ErrUnknownProxyProtocolVersion
 	}
 }
 
