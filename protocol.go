@@ -117,11 +117,7 @@ func (p *Conn) SetWriteDeadline(t time.Time) error {
 }
 
 func (p *Conn) readHeader() error {
-	hdr, err := Read(p.bufReader)
-	if err != nil {
-		return err
-	}
-	p.header = hdr
+	p.header, _ = Read(p.bufReader)
 	return nil
 
 }
