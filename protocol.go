@@ -124,8 +124,13 @@ func (p *Conn) SetWriteDeadline(t time.Time) error {
 	return p.conn.SetWriteDeadline(t)
 }
 
-func (p *Conn) readHeader() error {
-	p.header, _ = Read(p.bufReader)
-	return nil
+func (p *Conn) readHeader() (err error) {
+	p.header, err = Read(p.bufReader)
+	// For the purpose of this wrapper shamefully stolen from armon/go-proxyproto
+	// let's act as if there was no error when PROXY protocol is not present.
+	if err == ErrNoProxyProtocol {
+		err = nil
+	}
 
+	return
 }
