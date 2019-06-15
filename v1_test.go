@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	TCP4AddressesAndPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, SEPARATOR)
-	TCP6AddressesAndPorts = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, SEPARATOR)
+	TCP4AddressesAndPorts        = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, SEPARATOR)
+	TCP4AddressesAndInvalidPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(INVALID_PORT), strconv.Itoa(INVALID_PORT)}, SEPARATOR)
+	TCP6AddressesAndPorts        = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, SEPARATOR)
 
 	fixtureTCP4V1 = "PROXY TCP4 " + TCP4AddressesAndPorts + CRLF + "GET /"
 	fixtureTCP6V1 = "PROXY TCP6 " + TCP6AddressesAndPorts + CRLF + "GET /"
@@ -44,12 +45,16 @@ var invalidParseV1Tests = []struct {
 		newBufioReader([]byte("PROXY TCP4 " + TCP6AddressesAndPorts + CRLF)),
 		ErrInvalidAddress,
 	},
+	// PROXY TCP IPv4
+	{newBufioReader([]byte("PROXY TCP4 " + TCP4AddressesAndInvalidPorts + CRLF)),
+		ErrInvalidPortNumber,
+	},
 }
 
 func TestReadV1Invalid(t *testing.T) {
 	for _, tt := range invalidParseV1Tests {
 		if _, err := Read(tt.reader); err != tt.expectedError {
-			t.Fatalf("TestReadV1Invalid: expected %s, actual %s", tt.expectedError, err)
+			t.Fatalf("TestReadV1Invalid: expected %s, actual %s", tt.expectedError, err.Error())
 		}
 	}
 }
