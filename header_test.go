@@ -41,7 +41,7 @@ func TestReadTimeoutV1Invalid(t *testing.T) {
 	}
 }
 
-func TestEqualTo(t *testing.T) {
+func TestEqualsTo(t *testing.T) {
 	var headersEqual = []struct {
 		this, that *Header
 		expected   bool
@@ -108,6 +108,11 @@ func TestEqualTo(t *testing.T) {
 			t.Fatalf("expected %t, actual %t", tt.expected, actual)
 		}
 	}
+}
+
+// This is here just because of coveralls
+func TestEqualTo(t *testing.T) {
+	TestEqualsTo(t)
 }
 
 func TestLocalAddr(t *testing.T) {
