@@ -184,7 +184,7 @@ func TestParseV2Valid(t *testing.T) {
 		if err != nil {
 			t.Fatal("TestParseV2Valid: unexpected error", err.Error())
 		}
-		if !header.EqualTo(tt.expectedHeader) {
+		if !header.EqualsTo(tt.expectedHeader) {
 			t.Fatalf("TestParseV2Valid: expected %#v, actual %#v", tt.expectedHeader, header)
 		}
 	}
@@ -206,7 +206,7 @@ func TestWriteV2Valid(t *testing.T) {
 			t.Fatal("TestWriteVersion2: Unexpected error ", err)
 		}
 
-		if !newHeader.EqualTo(tt.expectedHeader) {
+		if !newHeader.EqualsTo(tt.expectedHeader) {
 			t.Fatalf("TestWriteVersion2: expected %#v, actual %#v", tt.expectedHeader, newHeader)
 		}
 	}
@@ -278,7 +278,7 @@ func TestParseV2Padded(t *testing.T) {
 		if err != nil {
 			t.Fatal("TestParseV2Padded: Unexpected error ", err)
 		}
-		if !newHeader.EqualTo(tt.expectedHeader) {
+		if !newHeader.EqualsTo(tt.expectedHeader) {
 			t.Fatalf("TestParseV2Padded: expected %#v, actual %#v", tt.expectedHeader, newHeader)
 		}
 

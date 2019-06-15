@@ -42,18 +42,25 @@ type Header struct {
 }
 
 // EqualTo returns true if headers are equivalent, false otherwise.
-func (header *Header) EqualTo(q *Header) bool {
-	if header == nil || q == nil {
+// Deprecated: use EqualsTo instead. This method will eventually be removed.
+func (header *Header) EqualTo(otherHeader *Header) bool {
+	return header.EqualsTo(otherHeader)
+}
+
+// EqualsTo returns true if headers are equivalent, false otherwise.
+func (header *Header) EqualsTo(otherHeader *Header) bool {
+	if otherHeader == nil {
 		return false
 	}
 	if header.Command.IsLocal() {
 		return true
 	}
-	return header.TransportProtocol == q.TransportProtocol &&
-		header.SourceAddress.String() == q.SourceAddress.String() &&
-		header.DestinationAddress.String() == q.DestinationAddress.String() &&
-		header.SourcePort == q.SourcePort &&
-		header.DestinationPort == q.DestinationPort
+	return header.Version == otherHeader.Version &&
+		header.TransportProtocol == otherHeader.TransportProtocol &&
+		header.SourceAddress.String() == otherHeader.SourceAddress.String() &&
+		header.DestinationAddress.String() == otherHeader.DestinationAddress.String() &&
+		header.SourcePort == otherHeader.SourcePort &&
+		header.DestinationPort == otherHeader.DestinationPort
 }
 
 // WriteTo renders a proxy protocol header in a format to write over the wire.

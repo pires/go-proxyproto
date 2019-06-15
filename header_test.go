@@ -38,3 +38,72 @@ func TestReadTimeoutV1Invalid(t *testing.T) {
 		t.Fatalf("TestReadTimeoutV1Invalid: expected %s, actual %s", ErrNoProxyProtocol, err)
 	}
 }
+
+func TestEqualTo(t *testing.T) {
+	var headersEqual = []struct {
+		this, that *Header
+		expected   bool
+	}{
+		{
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			nil,
+			false,
+		},
+		{
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			&Header{
+				Version:            2,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			false,
+		},
+		{
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			&Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			true,
+		},
+	}
+
+	for _, tt := range headersEqual {
+		if actual := tt.this.EqualsTo(tt.that); actual != tt.expected {
+			t.Fatalf("TestEqualTo: expected %t, actual %t", tt.expected, actual)
+		}
+	}
+}

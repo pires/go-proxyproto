@@ -90,7 +90,7 @@ func TestParseV1Valid(t *testing.T) {
 		if err != nil {
 			t.Fatal("TestParseV1Valid: unexpected error", err.Error())
 		}
-		if !header.EqualTo(tt.expectedHeader) {
+		if !header.EqualsTo(tt.expectedHeader) {
 			t.Fatalf("TestParseV1Valid: expected %#v, actual %#v", tt.expectedHeader, header)
 		}
 	}
@@ -112,7 +112,7 @@ func TestWriteV1Valid(t *testing.T) {
 			t.Fatal("TestWriteV1Valid: Unexpected error ", err)
 		}
 
-		if !newHeader.EqualTo(tt.expectedHeader) {
+		if !newHeader.EqualsTo(tt.expectedHeader) {
 			t.Fatalf("TestWriteV1Valid: expected %#v, actual %#v", tt.expectedHeader, newHeader)
 		}
 	}
