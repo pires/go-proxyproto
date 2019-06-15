@@ -1,3 +1,7 @@
+// This file was shamefully stolen from github.com/armon/go-proxyproto.
+// It has been heavily edited to conform to this lib.
+//
+// Thanks @armon
 package proxyproto
 
 import (
@@ -5,16 +9,6 @@ import (
 	"net"
 	"testing"
 	"time"
-)
-
-const (
-	goodAddr = "127.0.0.1"
-	badAddr  = "127.0.0.2"
-	errAddr  = "9999.0.0.2"
-)
-
-var (
-	checkAddr string
 )
 
 func TestPassthrough(t *testing.T) {
@@ -33,8 +27,16 @@ func TestPassthrough(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header := "PROXY TCP4 10.1.1.1 20.2.2.2 1000 2000\r\n"
-		conn.Write([]byte(header))
+		header := &Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv4,
+			SourceAddress:      net.ParseIP("10.1.1.1"),
+			SourcePort:         1000,
+			DestinationAddress: net.ParseIP("20.2.2.2"),
+			DestinationPort:    2000,
+		}
+		header.WriteTo(conn)
 
 		conn.Write([]byte("ping"))
 		recv := make([]byte, 4)
@@ -88,8 +90,16 @@ func TestTimeout(t *testing.T) {
 		time.Sleep(clientWriteDelay)
 
 		// Write out the header!
-		header := "PROXY TCP4 127.0.0.1 20.2.2.2 1000 2000\r\n"
-		conn.Write([]byte(header))
+		header := &Header{
+			Version: 1,
+			//Command:            PROXY, // not needed in v1
+			TransportProtocol:  TCPv4,
+			SourceAddress:      net.ParseIP("127.0.0.1"),
+			SourcePort:         1000,
+			DestinationAddress: net.ParseIP("20.2.2.2"),
+			DestinationPort:    2000,
+		}
+		header.WriteTo(conn)
 
 		conn.Write([]byte("ping"))
 		recv := make([]byte, 4)
@@ -151,8 +161,16 @@ func TestParse_ipv4(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header := "PROXY TCP4 10.1.1.1 20.2.2.2 1000 2000\r\n"
-		conn.Write([]byte(header))
+		header := &Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv4,
+			SourceAddress:      net.ParseIP("10.1.1.1"),
+			SourcePort:         1000,
+			DestinationAddress: net.ParseIP("20.2.2.2"),
+			DestinationPort:    2000,
+		}
+		header.WriteTo(conn)
 
 		conn.Write([]byte("ping"))
 		recv := make([]byte, 4)
@@ -210,8 +228,16 @@ func TestParse_ipv6(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header := "PROXY TCP6 ffff::ffff ffff::ffff 1000 2000\r\n"
-		conn.Write([]byte(header))
+		header := &Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv6,
+			SourceAddress:      net.ParseIP("ffff::ffff"),
+			SourcePort:         1000,
+			DestinationAddress: net.ParseIP("ffff::ffff"),
+			DestinationPort:    2000,
+		}
+		header.WriteTo(conn)
 
 		conn.Write([]byte("ping"))
 		recv := make([]byte, 4)
