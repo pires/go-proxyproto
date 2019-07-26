@@ -13,16 +13,18 @@ import (
 // the correct client address.
 type Listener struct {
 	Listener net.Listener
+	Policy   PolicyFunc
 }
 
 // Conn is used to wrap and underlying connection which
 // may be speaking the Proxy Protocol. If it is, the RemoteAddr() will
 // return the address of the client instead of the proxy address.
 type Conn struct {
-	bufReader *bufio.Reader
-	conn      net.Conn
-	header    *Header
-	once      sync.Once
+	bufReader         *bufio.Reader
+	conn              net.Conn
+	header            *Header
+	once              sync.Once
+	proxyHeaderPolicy Policy
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -32,7 +34,19 @@ func (p *Listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewConn(conn), nil
+
+	proxyHeaderPolicy := USE
+	if p.Policy != nil {
+		proxyHeaderPolicy, err = p.Policy(conn.RemoteAddr())
+		if err != nil {
+			// can't decide the policy, we can't accept the connection
+			conn.Close()
+			return nil, err
+		}
+	}
+
+	newConn := NewConn(conn, proxyHeaderPolicy)
+	return newConn, nil
 }
 
 // Close closes the underlying listener.
@@ -47,10 +61,11 @@ func (p *Listener) Addr() net.Addr {
 
 // NewConn is used to wrap a net.Conn that may be speaking
 // the proxy protocol into a proxyproto.Conn
-func NewConn(conn net.Conn) *Conn {
+func NewConn(conn net.Conn, proxyHeaderPolicy Policy) *Conn {
 	pConn := &Conn{
-		bufReader: bufio.NewReader(conn),
-		conn:      conn,
+		bufReader:         bufio.NewReader(conn),
+		conn:              conn,
+		proxyHeaderPolicy: proxyHeaderPolicy,
 	}
 	return pConn
 }
@@ -118,13 +133,29 @@ func (p *Conn) SetWriteDeadline(t time.Time) error {
 	return p.conn.SetWriteDeadline(t)
 }
 
-func (p *Conn) readHeader() (err error) {
-	p.header, err = Read(p.bufReader)
+func (p *Conn) readHeader() error {
+	header, err := Read(p.bufReader)
 	// For the purpose of this wrapper shamefully stolen from armon/go-proxyproto
 	// let's act as if there was no error when PROXY protocol is not present.
 	if err == ErrNoProxyProtocol {
-		err = nil
+		// but not if it is required that the connection has one
+		if p.proxyHeaderPolicy == REQUIRE {
+			return err
+		}
+
+		return nil
 	}
 
-	return
+	// proxy protocol header was found
+	if err == nil && header != nil {
+		switch p.proxyHeaderPolicy {
+		case REJECT:
+			// this connection is not allowed to send one
+			return ErrSuperfluousProxyHeader
+		case USE:
+			p.header = header
+		}
+	}
+
+	return err
 }

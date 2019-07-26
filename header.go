@@ -28,6 +28,7 @@ var (
 	ErrInvalidLength                        = errors.New("Invalid length")
 	ErrInvalidAddress                       = errors.New("Invalid address")
 	ErrInvalidPortNumber                    = errors.New("Invalid port number")
+	ErrSuperfluousProxyHeader               = errors.New("Upstream connection sent PROXY header but isn't allowed to send one")
 )
 
 // Header is the placeholder for proxy protocol header.
