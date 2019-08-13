@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 )
 
@@ -27,6 +28,7 @@ var (
 		binary.BigEndian.PutUint16(a, lengthUnix)
 		return a
 	}()
+	errUint16Overflow = errors.New("uint16 overflow")
 )
 
 type _ports struct {
@@ -101,7 +103,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	}
 
 	// Length-limited reader for payload section
-	payloadReader := io.LimitReader(reader, int64(length))
+	payloadReader := io.LimitReader(reader, int64(length)).(*io.LimitedReader)
 
 	// Read addresses and ports
 	if header.TransportProtocol.IsIPv4() {
@@ -138,10 +140,11 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	//}
 	//}
 
-	// TODO add encapsulated TLV support
-
-	// Drain the remaining padding
-	payloadReader.Read(make([]byte, length))
+	// Copy bytes for optional Type-Length-Value vector
+	header.rawTLVs = make([]byte, payloadReader.N) // Allocate minimum size slice
+	if _, err = io.ReadFull(payloadReader, header.rawTLVs); err != nil && err != io.EOF {
+		return nil, err
+	}
 
 	return header, nil
 }
@@ -152,14 +155,21 @@ func (header *Header) formatVersion2() ([]byte, error) {
 	buf.WriteByte(header.Command.toByte())
 	if !header.Command.IsLocal() {
 		buf.WriteByte(header.TransportProtocol.toByte())
-		// TODO add encapsulated TLV length
 		var addrSrc, addrDst []byte
 		if header.TransportProtocol.IsIPv4() {
-			buf.Write(lengthV4Bytes)
+			hdrLen, err := addTLVLen(lengthV4Bytes, len(header.rawTLVs))
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(hdrLen)
 			addrSrc = header.SourceAddress.To4()
 			addrDst = header.DestinationAddress.To4()
 		} else if header.TransportProtocol.IsIPv6() {
-			buf.Write(lengthV6Bytes)
+			hdrLen, err := addTLVLen(lengthV6Bytes, len(header.rawTLVs))
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(hdrLen)
 			addrSrc = header.SourceAddress.To16()
 			addrDst = header.DestinationAddress.To16()
 		} else if header.TransportProtocol.IsUnix() {
@@ -184,7 +194,9 @@ func (header *Header) formatVersion2() ([]byte, error) {
 			return a
 		}()
 		buf.Write(portDstBytes)
-
+		if len(header.rawTLVs) > 0 {
+			buf.Write(header.rawTLVs)
+		}
 	}
 
 	return buf.Bytes(), nil
@@ -199,4 +211,19 @@ func (header *Header) validateLength(length uint16) bool {
 		return length >= lengthUnix
 	}
 	return false
+}
+
+// addTLVLen adds the length of the TLV to the header length or errors on uint16 overflow.
+func addTLVLen(cur []byte, tlvLen int) ([]byte, error) {
+	if tlvLen == 0 {
+		return cur, nil
+	}
+	curLen := binary.BigEndian.Uint16(cur)
+	newLen := int(curLen) + tlvLen
+	if newLen >= 1<<16 {
+		return nil, errUint16Overflow
+	}
+	a := make([]byte, 2)
+	binary.BigEndian.PutUint16(a, uint16(newLen))
+	return a, nil
 }

@@ -39,6 +39,7 @@ type Header struct {
 	DestinationAddress net.IP
 	SourcePort         uint16
 	DestinationPort    uint16
+	rawTLVs            []byte
 }
 
 // RemoteAddr returns the address of the remote endpoint of the connection.
@@ -71,6 +72,10 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 	if header.Command.IsLocal() {
 		return true
 	}
+	// TLVs only exist for version 2
+	if header.Version == 0x02 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
+		return false
+	}
 	return header.Version == otherHeader.Version &&
 		header.TransportProtocol == otherHeader.TransportProtocol &&
 		header.SourceAddress.String() == otherHeader.SourceAddress.String() &&
@@ -99,6 +104,11 @@ func (header *Header) Format() ([]byte, error) {
 	default:
 		return nil, ErrUnknownProxyProtocolVersion
 	}
+}
+
+// TLVs returns the TLVs stored into this header, if they exist.  TLVs are optional for v2 of the protocol.
+func (header *Header) TLVs() ([]TLV, error) {
+	return splitTLVs(header.rawTLVs)
 }
 
 // Read identifies the proxy protocol version and reads the remaining of
