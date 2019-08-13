@@ -138,10 +138,10 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	//}
 	//}
 
-	// TODO add encapsulated TLV support
-
-	// Drain the remaining padding
-	payloadReader.Read(make([]byte, length))
+	// Read optional Type-Length-Value vectors
+	if header.TLVs, err = readTLVs(payloadReader); err != nil {
+		return nil, err
+	}
 
 	return header, nil
 }

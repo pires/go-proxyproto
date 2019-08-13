@@ -39,6 +39,7 @@ type Header struct {
 	DestinationAddress net.IP
 	SourcePort         uint16
 	DestinationPort    uint16
+	TLVs               []TLV
 }
 
 // RemoteAddr returns the address of the remote endpoint of the connection.
