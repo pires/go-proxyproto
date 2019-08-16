@@ -84,9 +84,9 @@ func (t TLV) AWSVPCType() bool {
 	return t.Type.AWS() && t.Length >= 1 && t.Value[0] == PP2_SUBTYPE_AWS_VPCE_ID
 }
 
-// AWSVPCId returns the vpc-id of an AWS VPC extension TLV or errors with ErrIncompatibleTLV or ErrMalformedTLV if
+// AWSVPCID returns the vpc-id of an AWS VPC extension TLV or errors with ErrIncompatibleTLV or ErrMalformedTLV if
 // it's the wrong TLV type or has a malformed VPC ID (containing chars other than 0-9, a-z, -)
-func (t TLV) AWSVPCId() (string, error) {
+func (t TLV) AWSVPCID() (string, error) {
 	if !t.AWSVPCType() {
 		return "", ErrIncompatibleTLV
 	}
@@ -98,10 +98,10 @@ func (t TLV) AWSVPCId() (string, error) {
 	return string(t.Value[1:]), nil
 }
 
-// AWSVPCId returns the first AWS VPC ID in the TLV if it exists and is well-formed.  Returns an empty string otherwise.
-func (header *Header) AWSVPCId() string {
+// AWSVPCID returns the first AWS VPC ID in the TLV if it exists and is well-formed.  Returns an empty string otherwise.
+func (header *Header) AWSVPCID() string {
 	for _, tlv := range header.TLVs {
-		if vpc, err := tlv.AWSVPCId(); err == nil && vpc != "" {
+		if vpc, err := tlv.AWSVPCID(); err == nil && vpc != "" {
 			return vpc
 		}
 	}
@@ -142,7 +142,7 @@ func (p PP2Type) Future() bool {
 	return p >= PP2_TYPE_MIN_FUTURE
 }
 
-// Spec is true is the type is covered by the spec, see section 2.2 and 2.2.7
+// Spec is true if the type is covered by the spec, see section 2.2 and 2.2.7
 func (p PP2Type) Spec() bool {
 	return p.Registered() || p.App() || p.Experiment() || p.Future()
 }

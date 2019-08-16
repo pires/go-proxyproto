@@ -53,13 +53,13 @@ func TestParseV2TLV(t *testing.T) {
 	}
 
 	vpce := "vpce-08d2bf15fac5001c9"
-	if vpca, err := header.TLVs[1].AWSVPCId(); err != nil {
+	if vpca, err := header.TLVs[1].AWSVPCID(); err != nil {
 		t.Fatalf("TestParseV2TLV: Unexpected error when parsing AWS VPC ID")
 	} else if vpca != vpce {
 		t.Fatalf("TestParseV2TLV: Unexpected VPC ID from TLV[1] expected %#v, actual %#v", vpce, vpca)
 	}
 
-	if vpca := header.AWSVPCId(); vpca != vpce {
+	if vpca := header.AWSVPCID(); vpca != vpce {
 		t.Fatalf("TestParseV2TLV: Unexpected VPC ID from header expected %#v, actual %#v", vpce, vpca)
 	}
 }
