@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"io/ioutil"
 )
 
 var (
@@ -138,8 +139,9 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	//}
 	//}
 
-	// Read optional Type-Length-Value vectors
-	if header.TLVs, err = readTLVs(payloadReader); err != nil {
+	// Copy bytes for optional Type-Length-Value vector
+	header.rawTLVs, err = ioutil.ReadAll(payloadReader)
+	if err != nil {
 		return nil, err
 	}
 

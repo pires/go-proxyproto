@@ -7,8 +7,9 @@ package proxyproto
 import (
 	"encoding/binary"
 	"errors"
-	"io"
-	"io/ioutil"
+	"regexp"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -24,6 +25,7 @@ const (
 	PP2_SUBTYPE_SSL_SIG_ALG         = 0x24
 	PP2_SUBTYPE_SSL_KEY_ALG         = 0x25
 	PP2_TYPE_NETNS                  = 0x30
+
 	// Section 2.2.7, reserved types
 	PP2_TYPE_MIN_CUSTOM     = 0xE0
 	PP2_TYPE_MAX_CUSTOM     = 0xEF
@@ -31,15 +33,25 @@ const (
 	PP2_TYPE_MAX_EXPERIMENT = 0xF7
 	PP2_TYPE_MIN_FUTURE     = 0xF8
 	PP2_TYPE_MAX_FUTURE     = 0xFF
+
 	// Amazon's extension
 	PP2_TYPE_AWS            = 0xEA
 	PP2_SUBTYPE_AWS_VPCE_ID = 0x01
+
+	// pp2_tlv_ssl.client  bit fields
+	PP2_BITFIELD_CLIENT_SSL       uint8 = 0x01
+	PP2_BITFIELD_CLIENT_CERT_CONN       = 0x02
+	PP2_BITFIELD_CLIENT_CERT_SESS       = 0x04
+
+	tlvSSLMinLen = 5 // len(pp2_tlv_ssl.client) + len(pp2_tlv_ssl.verify)
 )
 
 var (
 	ErrTruncatedTLV    = errors.New("Truncated TLV")
 	ErrMalformedTLV    = errors.New("Malformed TLV Value")
 	ErrIncompatibleTLV = errors.New("Incompatible TLV type")
+
+	vpceRe = regexp.MustCompile("[A-Za-z0-9-]*")
 )
 
 // PP2Type is the proxy protocol v2 type
@@ -52,26 +64,25 @@ type TLV struct {
 	Value  []byte
 }
 
-// readTLVs reads the Type-Length-Value vector, returns the vector or an error.  Reads until EOF or an error occurs.
-func readTLVs(reader io.Reader) ([]TLV, error) {
-	rest, err := ioutil.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
+// splitTLVs splits the Type-Length-Value vector, returns the vector or an error.
+func splitTLVs(raw []byte) ([]TLV, error) {
 	var tlvs []TLV
-	for i := 0; i < len(rest); {
+	for i := 0; i < len(raw); {
 		tlv := TLV{
-			Type: PP2Type(rest[i]),
+			Type: PP2Type(raw[i]),
 		}
-		tlv.Length = int(binary.BigEndian.Uint16(rest[i+1 : i+3])) // Max length = 65K
+		if len(raw)-i <= 3 {
+			return nil, ErrTruncatedTLV
+		}
+		tlv.Length = int(binary.BigEndian.Uint16(raw[i+1 : i+3])) // Max length = 65K
 		i += 3
-		if i+tlv.Length > len(rest) {
+		if i+tlv.Length > len(raw) {
 			return nil, ErrTruncatedTLV
 		}
 		// Ignore no-op padding
 		if tlv.Type != PP2_TYPE_NOOP {
 			tlv.Value = make([]byte, tlv.Length)
-			copy(tlv.Value, rest[i:i+tlv.Length])
+			copy(tlv.Value, raw[i:i+tlv.Length])
 		}
 		i += tlv.Length
 		tlvs = append(tlvs, tlv)
@@ -90,22 +101,143 @@ func (t TLV) AWSVPCID() (string, error) {
 	if !t.AWSVPCType() {
 		return "", ErrIncompatibleTLV
 	}
-	for _, c := range t.Value[1:] {
-		if !(c == byte('-') || (c >= byte('0') && c <= byte('9')) || (c >= byte('a') && c <= byte('z'))) {
-			return "", ErrMalformedTLV
-		}
+	if !vpceRe.MatchString(string(t.Value)) {
+		return "", ErrMalformedTLV
 	}
 	return string(t.Value[1:]), nil
 }
 
-// AWSVPCID returns the first AWS VPC ID in the TLV if it exists and is well-formed.  Returns an empty string otherwise.
-func (header *Header) AWSVPCID() string {
-	for _, tlv := range header.TLVs {
+// AWSVPCID returns the first AWS VPC ID in the TLV if it exists and is well-formed and a bool indicating one was found.
+func AWSVPCID(tlvs []TLV) (string, bool) {
+	for _, tlv := range tlvs {
 		if vpc, err := tlv.AWSVPCID(); err == nil && vpc != "" {
-			return vpc
+			return vpc, true
 		}
 	}
-	return ""
+	return "", false
+}
+
+// 2.2.5. The PP2_TYPE_SSL type and subtypes
+/*
+   struct pp2_tlv_ssl {
+           uint8_t  client;
+           uint32_t verify;
+           struct pp2_tlv sub_tlv[0];
+   };
+*/
+type PP2SSL struct {
+	Client uint8 // The <client> field is made of a bit field from the following values,
+	// indicating which element is present: PP2_BITFIELD_CLIENT_SSL,
+	// PP2_BITFIELD_CLIENT_CERT_CONN, PP2_BITFIELD_CLIENT_CERT_SESS
+	Verify uint32 // Verify will be zero if the client presented a certificate
+	// and it was successfully verified, and non-zero otherwise.
+	TLV []TLV
+}
+
+// Verified is true if the client presented a certificate and it was successfully verified
+func (s PP2SSL) Verified() bool {
+	return s.Verify == 0
+}
+
+// ClientSSL indicates that the client connected over SSL/TLS.  When true, SSLVersion will return the version.
+func (s PP2SSL) ClientSSL() bool {
+	return s.Client&PP2_BITFIELD_CLIENT_SSL == PP2_BITFIELD_CLIENT_SSL
+}
+
+// ClientCertConn indicates that the client provided a certificate over the current connection.
+func (s PP2SSL) ClientCertConn() bool {
+	return s.Client&PP2_BITFIELD_CLIENT_CERT_CONN == PP2_BITFIELD_CLIENT_CERT_CONN
+}
+
+// ClientCertSess indicates that the client provided a certificate at least once over the TLS session this
+// connection belongs to.
+func (s PP2SSL) ClientCertSess() bool {
+	return s.Client&PP2_BITFIELD_CLIENT_CERT_SESS == PP2_BITFIELD_CLIENT_CERT_SESS
+}
+
+// SSLVersion returns the US-ASCII string representation of the TLS version and whether that extension exists.
+func (s PP2SSL) SSLVersion() (string, bool) {
+	for _, tlv := range s.TLV {
+		if tlv.Type == PP2_SUBTYPE_SSL_VERSION {
+			return string(tlv.Value), true
+		}
+	}
+	return "", false
+}
+
+// ClientCN returns the string representation (in UTF8) of the Common Name field (OID: 2.5.4.3) of the client
+// certificate's Distinguished Name and whether that extension exists.
+func (s PP2SSL) ClientCN() (string, bool) {
+	for _, tlv := range s.TLV {
+		if tlv.Type == PP2_SUBTYPE_SSL_CN {
+			return string(tlv.Value), true
+		}
+	}
+	return "", false
+}
+
+// SSLType is true if the TLV is type SSL
+func (t TLV) SSLType() bool {
+	return t.Type.SSL() && t.Length >= tlvSSLMinLen
+}
+
+// SSL returns the pp2_tlv_ssl from section 2.2.5 or errors with ErrIncompatibleTLV or ErrMalformedTLV
+func (t TLV) SSL() (PP2SSL, error) {
+	ssl := PP2SSL{}
+	if !t.SSLType() {
+		return ssl, ErrIncompatibleTLV
+	}
+	if t.Length < tlvSSLMinLen {
+		return ssl, ErrMalformedTLV
+	}
+	ssl.Client = t.Value[0]
+	ssl.Verify = binary.BigEndian.Uint32(t.Value[1:5])
+	var err error
+	ssl.TLV, err = splitTLVs(t.Value[5:])
+	if err != nil {
+		return PP2SSL{}, err
+	}
+	versionFound := !ssl.ClientSSL()
+	var cnFound bool
+	for _, tlv := range ssl.TLV {
+		switch tlv.Type {
+		case PP2_SUBTYPE_SSL_VERSION:
+			/*
+				The PP2_CLIENT_SSL flag indicates that the client connected over SSL/TLS. When
+				this field is present, the US-ASCII string representation of the TLS version is
+				appended at the end of the field in the TLV format using the type
+				PP2_SUBTYPE_SSL_VERSION.
+			*/
+			if tlv.Length == 0 || !isASCII(tlv.Value) {
+				return PP2SSL{}, ErrMalformedTLV
+			}
+			versionFound = true
+		case PP2_SUBTYPE_SSL_CN:
+			/*
+				In all cases, the string representation (in UTF8) of the Common Name field
+				(OID: 2.5.4.3) of the client certificate's Distinguished Name, is appended
+				using the TLV format and the type PP2_SUBTYPE_SSL_CN. E.g. "example.com".
+			*/
+			if tlv.Length == 0 || !utf8.Valid(tlv.Value) {
+				return PP2SSL{}, ErrMalformedTLV
+			}
+			cnFound = true
+		}
+	}
+	if !(versionFound && cnFound) {
+		return PP2SSL{}, ErrMalformedTLV
+	}
+	return ssl, nil
+}
+
+// SSL returns the first PP2SSL if it exists and is well formed as well as bool indicating if it was found.
+func SSL(tlvs []TLV) (PP2SSL, bool) {
+	for _, t := range tlvs {
+		if ssl, err := t.SSL(); err == nil {
+			return ssl, true
+		}
+	}
+	return PP2SSL{}, false
 }
 
 // Registered is true if the type is registered in the spec, see section 2.2
@@ -150,4 +282,19 @@ func (p PP2Type) Spec() bool {
 // AWS is true if the type is the AWS extension
 func (p PP2Type) AWS() bool {
 	return p == PP2_TYPE_AWS
+}
+
+// SSL is true if the type is SSL
+func (p PP2Type) SSL() bool {
+	return p == PP2_TYPE_SSL
+}
+
+// isASCII checks whether a byte slice has all characters that fit in the ascii character set, including the null byte.
+func isASCII(b []byte) bool {
+	for _, c := range b {
+		if c > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
 }
