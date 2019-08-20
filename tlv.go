@@ -51,7 +51,7 @@ var (
 	ErrMalformedTLV    = errors.New("Malformed TLV Value")
 	ErrIncompatibleTLV = errors.New("Incompatible TLV type")
 
-	vpceRe = regexp.MustCompile("[A-Za-z0-9-]*")
+	vpceRe = regexp.MustCompile("^[A-Za-z0-9-]*$")
 )
 
 // PP2Type is the proxy protocol v2 type
@@ -90,27 +90,28 @@ func splitTLVs(raw []byte) ([]TLV, error) {
 	return tlvs, nil
 }
 
-// AWSVPCType is true if the TLV is an AWS extension with VPC subtype
-func (t TLV) AWSVPCType() bool {
+// AWSVPCEType is true if the TLV is an AWS extension with VPCE subtype
+func (t TLV) AWSVPCEType() bool {
 	return t.Type.AWS() && t.Length >= 1 && t.Value[0] == PP2_SUBTYPE_AWS_VPCE_ID
 }
 
-// AWSVPCID returns the vpc-id of an AWS VPC extension TLV or errors with ErrIncompatibleTLV or ErrMalformedTLV if
+// AWSVPCEID returns the vpc-id of an AWS VPC extension TLV or errors with ErrIncompatibleTLV or ErrMalformedTLV if
 // it's the wrong TLV type or has a malformed VPC ID (containing chars other than 0-9, a-z, -)
-func (t TLV) AWSVPCID() (string, error) {
-	if !t.AWSVPCType() {
+func (t TLV) AWSVPCEID() (string, error) {
+	if !t.AWSVPCEType() {
 		return "", ErrIncompatibleTLV
 	}
-	if !vpceRe.MatchString(string(t.Value)) {
+	vpce := string(t.Value[1:])
+	if !vpceRe.MatchString(vpce) {
 		return "", ErrMalformedTLV
 	}
-	return string(t.Value[1:]), nil
+	return string(vpce), nil
 }
 
-// AWSVPCID returns the first AWS VPC ID in the TLV if it exists and is well-formed and a bool indicating one was found.
-func AWSVPCID(tlvs []TLV) (string, bool) {
+// AWSVPCEID returns the first AWS VPC ID in the TLV if it exists and is well-formed and a bool indicating one was found.
+func AWSVPECID(tlvs []TLV) (string, bool) {
 	for _, tlv := range tlvs {
-		if vpc, err := tlv.AWSVPCID(); err == nil && vpc != "" {
+		if vpc, err := tlv.AWSVPCEID(); err == nil && vpc != "" {
 			return vpc, true
 		}
 	}
