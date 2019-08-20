@@ -72,6 +72,7 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 	if header.Command.IsLocal() {
 		return true
 	}
+	// TLVs only exist for version 2
 	if header.Version == 0x02 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
 		return false
 	}
