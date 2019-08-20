@@ -1,3 +1,6 @@
+# DO NOT USE - Temporary Fork #
+Wait until https://github.com/pires/go-proxyproto/pull/9 is merged.  This fork will be deleted.
+
 # go-proxyproto
 
 [![Build Status](https://travis-ci.org/pires/go-proxyproto.svg?branch=master)](https://travis-ci.org/pires/go-proxyproto)
