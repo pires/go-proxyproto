@@ -3,17 +3,23 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"testing"
 )
 
-type testCase struct {
+var (
+	fixtureOneByteTLV    = []byte{PP2_TYPE_MIN_CUSTOM + 1}
+	fixtureTwoByteTLV    = []byte{PP2_TYPE_MIN_CUSTOM + 2, 0x00}
+	fixtureEmptyLenTLV   = []byte{PP2_TYPE_MIN_CUSTOM + 3, 0x00, 0x01}
+	fixturePartialLenTLV = []byte{PP2_TYPE_MIN_CUSTOM + 3, 0x00, 0x02, 0x00}
+)
+
+var testCases = []struct {
 	name  string
 	raw   []byte
 	types []PP2Type
 	valid func(*testing.T, string, []TLV)
-}
-
-var testCases = []testCase{
+}{
 	{
 		name: "VPC example",
 		// https://github.com/aws/elastic-load-balancing-tools/blob/c8eee30ab991ab4c57dc37d1c58f09f67bd534aa/proprot/tst/com/amazonaws/proprot/Compatibility_AwsNetworkLoadBalancerTest.java#L41..L67
@@ -47,20 +53,20 @@ var testCases = []testCase{
 		types: []PP2Type{PP2_TYPE_CRC32C, PP2_TYPE_AWS, PP2_TYPE_NOOP},
 		valid: func(t *testing.T, name string, tlvs []TLV) {
 			if !tlvs[1].AWSVPCType() {
-				t.Fatalf("%s: Expected tlvs[1] to be an AWS VPC type", name)
+				t.Fatalf("TestParseV2TLV %s: Expected tlvs[1] to be an AWS VPC type", name)
 			}
 
 			vpce := "vpce-08d2bf15fac5001c9"
 			if vpca, err := tlvs[1].AWSVPCID(); err != nil {
-				t.Fatalf("%s: Unexpected error when parsing AWS VPC ID", name)
+				t.Fatalf("TestParseV2TLV %s: Unexpected error when parsing AWS VPC ID", name)
 			} else if vpca != vpce {
-				t.Fatalf("%s: Unexpected VPC ID from tlvs[1] expected %#v, actual %#v", name, vpce, vpca)
+				t.Fatalf("TestParseV2TLV %s: Unexpected VPC ID from tlvs[1] expected %#v, actual %#v", name, vpce, vpca)
 			}
 
 			if vpca, ok := AWSVPCID(tlvs); !ok {
-				t.Fatalf("%s: Expected to find VPC ID %#v in TLVs", name, vpce)
+				t.Fatalf("TestParseV2TLV %s: Expected to find VPC ID %#v in TLVs", name, vpce)
 			} else if vpca != vpce {
-				t.Fatalf("%s: Unexpected VPC ID from header expected %#v, actual %#v", name, vpce, vpca)
+				t.Fatalf("TestParseV2TLV %s: Unexpected VPC ID from header expected %#v, actual %#v", name, vpce, vpca)
 			}
 
 		},
@@ -92,42 +98,42 @@ var testCases = []testCase{
 		types: []PP2Type{PP2_TYPE_SSL},
 		valid: func(t *testing.T, name string, tlvs []TLV) {
 			if !tlvs[0].SSLType() {
-				t.Fatalf("%s: Expected tlvs[0] to be the SSL type", name)
+				t.Fatalf("TestParseV2TLV %s: Expected tlvs[0] to be the SSL type", name)
 			}
 
 			ssl, err := tlvs[0].SSL()
 			if err != nil {
-				t.Fatalf("%s: Unexpected error when parsing SSL %#v", name, err)
+				t.Fatalf("TestParseV2TLV %s: Unexpected error when parsing SSL %#v", name, err)
 			}
 
 			if !ssl.ClientSSL() {
-				t.Fatalf("%s: Expected ClientSSL() to be true", name)
+				t.Fatalf("TestParseV2TLV %s: Expected ClientSSL() to be true", name)
 			}
 
 			if !ssl.ClientCertConn() {
-				t.Fatalf("%s: Expected ClientCertConn() to be true", name)
+				t.Fatalf("TestParseV2TLV %s: Expected ClientCertConn() to be true", name)
 			}
 
 			if !ssl.ClientCertSess() {
-				t.Fatalf("%s: Expected ClientCertSess() to be true", name)
+				t.Fatalf("TestParseV2TLV %s: Expected ClientCertSess() to be true", name)
 			}
 
 			ecn := "Example Common Name Client Cert"
 			if acn, ok := ssl.ClientCN(); !ok {
-				t.Fatalf("%s: Expected ClientCN to exist", name)
+				t.Fatalf("TestParseV2TLV %s: Expected ClientCN to exist", name)
 			} else if acn != ecn {
-				t.Fatalf("%s: Unexpected ClientCN expected %#v, actual %#v", name, ecn, acn)
+				t.Fatalf("TestParseV2TLV %s: Unexpected ClientCN expected %#v, actual %#v", name, ecn, acn)
 			}
 
 			esslVer := "TLSv1.3"
 			if asslVer, ok := ssl.SSLVersion(); !ok {
-				t.Fatalf("%s: Expected SSLVersion to exist", name)
+				t.Fatalf("TestParseV2TLV %s: Expected SSLVersion to exist", name)
 			} else if asslVer != esslVer {
-				t.Fatalf("%s: Unexpected SSLVersion expected %#v, actual %#v", name, esslVer, asslVer)
+				t.Fatalf("TestParseV2TLV %s: Unexpected SSLVersion expected %#v, actual %#v", name, esslVer, asslVer)
 			}
 
 			if !ssl.Verified() {
-				t.Fatalf("%s: Expected Verified to be true", name)
+				t.Fatalf("TestParseV2TLV %s: Expected Verified to be true", name)
 			}
 		},
 	},
@@ -136,32 +142,82 @@ var testCases = []testCase{
 func TestParseV2TLV(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tlvs := checkTLVs(t, tc.raw, tc.types)
+			tlvs := checkTLVs(t, tc.name, tc.raw, tc.types)
 			tc.valid(t, tc.name, tlvs)
 		})
 	}
 }
 
-func checkTLVs(t *testing.T, raw []byte, expected []PP2Type) []TLV {
+func checkTLVs(t *testing.T, name string, raw []byte, expected []PP2Type) []TLV {
 	header, err := parseVersion2(bufio.NewReader(bytes.NewReader(raw)))
 	if err != nil {
-		t.Fatal("TestParseV2TLV: Unexpected error reading header", err)
+		t.Fatalf("%s: Unexpected error reading header %#v", name, err)
 	}
 
 	tlvs, err := header.TLVs()
 	if err != nil {
-		t.Fatal("TestParseV2TLV: Unexpected error splitting TLVS", err)
+		t.Fatalf("%s: Unexpected error splitting TLVS %#v", name, err)
 	}
 
 	if len(tlvs) != len(expected) {
-		t.Fatalf("TestParseV2TLV: Expected %d TLVs, actual %d", len(expected), len(tlvs))
+		t.Fatalf("%s: Expected %d TLVs, actual %d", name, len(expected), len(tlvs))
 	}
 
 	for i, et := range expected {
 		if at := tlvs[i].Type; at != et {
-			t.Fatalf("TestParseV2TLV: Expected type %X, actual %X", et, at)
+			t.Fatalf("%s: Expected type %X, actual %X", name, et, at)
 		}
 	}
 
 	return tlvs
+}
+
+func formatTLV(tlv TLV) []byte {
+	out := make([]byte, 3) // 1 = type + 2 = uint16 length
+	out[0] = byte(tlv.Type)
+	binary.BigEndian.PutUint16(out[1:3], uint16(tlv.Length))
+	return append(out, tlv.Value...)
+}
+
+var invalidTLVTests = []struct {
+	name          string
+	reader        *bufio.Reader
+	expectedError error
+}{
+	{
+		name: "One byte TLV",
+		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+			fixtureOneByteTLV)...)),
+		expectedError: ErrTruncatedTLV,
+	},
+	{
+		name: "Two byte TLV",
+		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+			fixtureTwoByteTLV)...)),
+		expectedError: ErrTruncatedTLV,
+	},
+	{
+		name: "Empty Len TLV",
+		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+			fixtureEmptyLenTLV)...)),
+		expectedError: ErrTruncatedTLV,
+	},
+	{
+		name: "Partial Len TLV",
+		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+			fixturePartialLenTLV)...)),
+		expectedError: ErrTruncatedTLV,
+	},
+}
+
+func TestInvalidV2TLV(t *testing.T) {
+	for _, tc := range invalidTLVTests {
+		t.Run(tc.name, func(t *testing.T) {
+			if hdr, err := Read(tc.reader); err != nil {
+				t.Fatalf("TestInvalidV2TLV %s: unexpected error reading proxy protocol %#v", tc.name, err)
+			} else if _, err := hdr.TLVs(); err != tc.expectedError {
+				t.Fatalf("TestInvalidV2TLV %s: expected %#v, actual %#v", tc.name, tc.expectedError, err)
+			}
+		})
+	}
 }

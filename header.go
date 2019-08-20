@@ -72,6 +72,9 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 	if header.Command.IsLocal() {
 		return true
 	}
+	if header.Version == 0x02 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
+		return false
+	}
 	return header.Version == otherHeader.Version &&
 		header.TransportProtocol == otherHeader.TransportProtocol &&
 		header.SourceAddress.String() == otherHeader.SourceAddress.String() &&
