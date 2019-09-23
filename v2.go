@@ -72,10 +72,6 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	if _, ok := supportedCommand[header.Command]; !ok {
 		return nil, ErrUnsupportedProtocolVersionAndCommand
 	}
-	// If command is LOCAL, header ends here
-	if header.Command.IsLocal() {
-		return header, nil
-	}
 
 	// Read the 14th byte, address family and protocol
 	b14, err := reader.ReadByte()
@@ -150,42 +146,39 @@ func (header *Header) formatVersion2() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.Write(SIGV2)
 	buf.WriteByte(header.Command.toByte())
-	if !header.Command.IsLocal() {
-		buf.WriteByte(header.TransportProtocol.toByte())
-		// TODO add encapsulated TLV length
-		var addrSrc, addrDst []byte
-		if header.TransportProtocol.IsIPv4() {
-			buf.Write(lengthV4Bytes)
-			addrSrc = header.SourceAddress.To4()
-			addrDst = header.DestinationAddress.To4()
-		} else if header.TransportProtocol.IsIPv6() {
-			buf.Write(lengthV6Bytes)
-			addrSrc = header.SourceAddress.To16()
-			addrDst = header.DestinationAddress.To16()
-		} else if header.TransportProtocol.IsUnix() {
-			buf.Write(lengthUnixBytes)
-			// TODO is below right?
-			addrSrc = []byte(header.SourceAddress.String())
-			addrDst = []byte(header.DestinationAddress.String())
-		}
-		buf.Write(addrSrc)
-		buf.Write(addrDst)
-
-		portSrcBytes := func() []byte {
-			a := make([]byte, 2)
-			binary.BigEndian.PutUint16(a, header.SourcePort)
-			return a
-		}()
-		buf.Write(portSrcBytes)
-
-		portDstBytes := func() []byte {
-			a := make([]byte, 2)
-			binary.BigEndian.PutUint16(a, header.DestinationPort)
-			return a
-		}()
-		buf.Write(portDstBytes)
-
+	buf.WriteByte(header.TransportProtocol.toByte())
+	// TODO add encapsulated TLV length
+	var addrSrc, addrDst []byte
+	if header.TransportProtocol.IsIPv4() {
+		buf.Write(lengthV4Bytes)
+		addrSrc = header.SourceAddress.To4()
+		addrDst = header.DestinationAddress.To4()
+	} else if header.TransportProtocol.IsIPv6() {
+		buf.Write(lengthV6Bytes)
+		addrSrc = header.SourceAddress.To16()
+		addrDst = header.DestinationAddress.To16()
+	} else if header.TransportProtocol.IsUnix() {
+		buf.Write(lengthUnixBytes)
+		// TODO is below right?
+		addrSrc = []byte(header.SourceAddress.String())
+		addrDst = []byte(header.DestinationAddress.String())
 	}
+	buf.Write(addrSrc)
+	buf.Write(addrDst)
+
+	portSrcBytes := func() []byte {
+		a := make([]byte, 2)
+		binary.BigEndian.PutUint16(a, header.SourcePort)
+		return a
+	}()
+	buf.Write(portSrcBytes)
+
+	portDstBytes := func() []byte {
+		a := make([]byte, 2)
+		binary.BigEndian.PutUint16(a, header.DestinationPort)
+		return a
+	}()
+	buf.Write(portDstBytes)
 
 	return buf.Bytes(), nil
 }
