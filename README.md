@@ -1,6 +1,6 @@
 # go-proxyproto
 
-[![Build Status](https://travis-ci.org/pires/go-proxyproto.svg?branch=master)](https://travis-ci.org/pires/go-proxyproto)
+[![Actions Status](https://github.com/pires/go-proxyproto/workflows/test/badge.svg)](https://github.com/pires/go-proxyproto/actions)
 [![Coverage Status](https://coveralls.io/repos/github/pires/go-proxyproto/badge.svg?branch=master)](https://coveralls.io/github/pires/go-proxyproto?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pires/go-proxyproto)](https://goreportcard.com/report/github.com/pires/go-proxyproto)
 
