@@ -90,7 +90,7 @@ func (p *Conn) Close() error {
 // the socket server.
 func (p *Conn) LocalAddr() net.Addr {
 	p.once.Do(func() { p.readHeader() })
-	if p.header == nil {
+	if p.header == nil || p.header.Command.IsLocal() {
 		return p.conn.LocalAddr()
 	}
 
@@ -102,7 +102,7 @@ func (p *Conn) LocalAddr() net.Addr {
 // the socket peer.
 func (p *Conn) RemoteAddr() net.Addr {
 	p.once.Do(func() { p.readHeader() })
-	if p.header == nil {
+	if p.header == nil || p.header.Command.IsLocal() {
 		return p.conn.RemoteAddr()
 	}
 
