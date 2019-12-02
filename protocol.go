@@ -11,23 +11,18 @@ import (
 // whose connections may be using the HAProxy Proxy Protocol.
 // If the connection is using the protocol, the RemoteAddr() will return
 // the correct client address.
-//
-// Optionally define ProxyHeaderTimeout to set a maximum time to
-// receive the Proxy Protocol Header. Zero means no timeout.
 type Listener struct {
-	Listener           net.Listener
-	ProxyHeaderTimeout time.Duration
+	Listener net.Listener
 }
 
 // Conn is used to wrap and underlying connection which
 // may be speaking the Proxy Protocol. If it is, the RemoteAddr() will
 // return the address of the client instead of the proxy address.
 type Conn struct {
-	bufReader          *bufio.Reader
-	conn               net.Conn
-	header             *Header
-	once               sync.Once
-	proxyHeaderTimeout time.Duration
+	bufReader *bufio.Reader
+	conn      net.Conn
+	header    *Header
+	once      sync.Once
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -37,7 +32,7 @@ func (p *Listener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewConn(conn, p.ProxyHeaderTimeout), nil
+	return NewConn(conn), nil
 }
 
 // Close closes the underlying listener.
@@ -52,11 +47,10 @@ func (p *Listener) Addr() net.Addr {
 
 // NewConn is used to wrap a net.Conn that may be speaking
 // the proxy protocol into a proxyproto.Conn
-func NewConn(conn net.Conn, timeout time.Duration) *Conn {
+func NewConn(conn net.Conn) *Conn {
 	pConn := &Conn{
-		bufReader:          bufio.NewReader(conn),
-		conn:               conn,
-		proxyHeaderTimeout: timeout,
+		bufReader: bufio.NewReader(conn),
+		conn:      conn,
 	}
 	return pConn
 }
@@ -90,7 +84,7 @@ func (p *Conn) Close() error {
 // the socket server.
 func (p *Conn) LocalAddr() net.Addr {
 	p.once.Do(func() { p.readHeader() })
-	if p.header == nil {
+	if p.header == nil || p.header.Command.IsLocal() {
 		return p.conn.LocalAddr()
 	}
 
@@ -102,7 +96,7 @@ func (p *Conn) LocalAddr() net.Addr {
 // the socket peer.
 func (p *Conn) RemoteAddr() net.Addr {
 	p.once.Do(func() { p.readHeader() })
-	if p.header == nil {
+	if p.header == nil || p.header.Command.IsLocal() {
 		return p.conn.RemoteAddr()
 	}
 
