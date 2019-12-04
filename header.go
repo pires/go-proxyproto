@@ -108,7 +108,7 @@ func (header *Header) Format() ([]byte, error) {
 
 // TLVs returns the TLVs stored into this header, if they exist.  TLVs are optional for v2 of the protocol.
 func (header *Header) TLVs() ([]TLV, error) {
-	return splitTLVs(header.rawTLVs)
+	return SplitTLVs(header.rawTLVs)
 }
 
 // Read identifies the proxy protocol version and reads the remaining of
