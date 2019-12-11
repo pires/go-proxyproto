@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"math/rand"
 	"reflect"
 	"testing"
 )
@@ -44,6 +45,13 @@ var (
 	fixtureIPv6Address  = append(addressesIPv6, ports...)
 	fixtureIPv6V2       = append(lengthV6Bytes, fixtureIPv6Address...)
 	fixtureIPv6V2Padded = append(append(lengthPaddedBytes, fixtureIPv6Address...), make([]byte, lengthPadded-lengthV6)...)
+	fixtureTLV          = func() []byte {
+		tlv := make([]byte, 2+rand.Intn(1<<12)) // Not enough to overflow, at least size two
+		rand.Read(tlv)
+		return tlv
+	}()
+	fixtureIPv4V2TLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureTLV)
+	fixtureIPv6V2TLV = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
 
 	// Arbitrary bytes following proxy bytes
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
@@ -154,6 +162,34 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationPort:    PORT,
 		},
 	},
+	// PROXY TCP IPv4 with TLV
+	{
+		newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureIPv4V2TLV...)),
+		&Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv4,
+			SourceAddress:      v4addr,
+			DestinationAddress: v4addr,
+			SourcePort:         PORT,
+			DestinationPort:    PORT,
+			rawTLVs:            fixtureTLV,
+		},
+	},
+	// PROXY TCP IPv6 with TLV
+	{
+		newBufioReader(append(append(SIGV2, PROXY, TCPv6), fixtureIPv6V2TLV...)),
+		&Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv6,
+			SourceAddress:      v6addr,
+			DestinationAddress: v6addr,
+			SourcePort:         PORT,
+			DestinationPort:    PORT,
+			rawTLVs:            fixtureTLV,
+		},
+	},
 	// PROXY UDP IPv4
 	{
 		newBufioReader(append(append(SIGV2, PROXY, UDPv4), fixtureIPv4V2...)),
@@ -232,6 +268,7 @@ var validParseV2PaddedTests = []struct {
 			DestinationAddress: v4addr,
 			SourcePort:         PORT,
 			DestinationPort:    PORT,
+			rawTLVs:            make([]byte, lengthPadded-lengthV4),
 		},
 	},
 	// PROXY TCP IPv6
@@ -245,6 +282,7 @@ var validParseV2PaddedTests = []struct {
 			DestinationAddress: v6addr,
 			SourcePort:         PORT,
 			DestinationPort:    PORT,
+			rawTLVs:            make([]byte, lengthPadded-lengthV6),
 		},
 	},
 	// PROXY UDP IPv4
@@ -258,6 +296,7 @@ var validParseV2PaddedTests = []struct {
 			DestinationAddress: v4addr,
 			SourcePort:         PORT,
 			DestinationPort:    PORT,
+			rawTLVs:            make([]byte, lengthPadded-lengthV4),
 		},
 	},
 	// PROXY UDP IPv6
@@ -271,6 +310,7 @@ var validParseV2PaddedTests = []struct {
 			DestinationAddress: v6addr,
 			SourcePort:         PORT,
 			DestinationPort:    PORT,
+			rawTLVs:            make([]byte, lengthPadded-lengthV6),
 		},
 	},
 }
@@ -298,6 +338,98 @@ func TestParseV2Padded(t *testing.T) {
 	}
 }
 
+func TestV2EqualsToTLV(t *testing.T) {
+	eHdr := &Header{
+		Version:            2,
+		Command:            PROXY,
+		TransportProtocol:  TCPv4,
+		SourceAddress:      v4addr,
+		DestinationAddress: v4addr,
+		SourcePort:         PORT,
+		DestinationPort:    PORT,
+	}
+	hdr, err := Read(newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureIPv4V2TLV...)))
+	if err != nil {
+		t.Fatal("TestV2EqualsToTLV: Unexpected error ", err)
+	}
+	if eHdr.EqualsTo(hdr) {
+		t.Fatalf("TestV2EqualsToTLV: Unexpectedly equal created: %#v, parsed: %#v", eHdr, hdr)
+	}
+	eHdr.rawTLVs = fixtureTLV[:]
+
+	if !eHdr.EqualsTo(hdr) {
+		t.Fatalf("TestV2EqualsToTLV: Unexpectedly unequal after tlv copy created: %#v, parsed: %#v", eHdr, hdr)
+	}
+
+	eHdr.rawTLVs[0] = eHdr.rawTLVs[0] + 1
+	if eHdr.EqualsTo(hdr) {
+		t.Fatalf("TestV2EqualsToTLV: Unexpectedly equal after changing tlv created: %#v, parsed: %#v", eHdr, hdr)
+	}
+}
+
+var tlvFormatTests = []*Header{
+	// PROXY TCP IPv4
+	&Header{
+		Version:            2,
+		Command:            PROXY,
+		TransportProtocol:  TCPv4,
+		SourceAddress:      v4addr,
+		DestinationAddress: v4addr,
+		SourcePort:         PORT,
+		DestinationPort:    PORT,
+		rawTLVs:            make([]byte, 1<<16),
+	},
+	// PROXY TCP IPv6
+	&Header{
+		Version:            2,
+		Command:            PROXY,
+		TransportProtocol:  TCPv6,
+		SourceAddress:      v6addr,
+		DestinationAddress: v6addr,
+		SourcePort:         PORT,
+		DestinationPort:    PORT,
+		rawTLVs:            make([]byte, 1<<16),
+	},
+	// PROXY UDP IPv4
+	&Header{
+		Version:            2,
+		Command:            PROXY,
+		TransportProtocol:  UDPv4,
+		SourceAddress:      v4addr,
+		DestinationAddress: v4addr,
+		SourcePort:         PORT,
+		DestinationPort:    PORT,
+		rawTLVs:            make([]byte, 1<<16),
+	},
+	// PROXY UDP IPv6
+	&Header{
+		Version:            2,
+		Command:            PROXY,
+		TransportProtocol:  UDPv6,
+		SourceAddress:      v6addr,
+		DestinationAddress: v6addr,
+		SourcePort:         PORT,
+		DestinationPort:    PORT,
+		rawTLVs:            make([]byte, 1<<16),
+	},
+}
+
+func TestV2TLVFormatTooLargeTLV(t *testing.T) {
+	for _, tt := range tlvFormatTests {
+		if _, err := tt.Format(); err != errUint16Overflow {
+			t.Fatalf("TestV2TLVFormatTooLargeTLV: missing or expected error when formatting too-large TLV %#v", err)
+		}
+	}
+}
+
 func newBufioReader(b []byte) *bufio.Reader {
 	return bufio.NewReader(bytes.NewReader(b))
+}
+
+func fixtureWithTLV(cur []byte, addr []byte, tlv []byte) []byte {
+	tlen, err := addTLVLen(cur, len(tlv))
+	if err != nil {
+		panic(err)
+	}
+	return append(append(tlen, addr...), tlv...)
 }
