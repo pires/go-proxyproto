@@ -12,8 +12,9 @@ import (
 // If the connection is using the protocol, the RemoteAddr() will return
 // the correct client address.
 type Listener struct {
-	Listener net.Listener
-	Policy   PolicyFunc
+	Listener       net.Listener
+	Policy         PolicyFunc
+	ValidateHeader Validator
 }
 
 // Conn is used to wrap and underlying connection which
@@ -25,7 +26,21 @@ type Conn struct {
 	header            *Header
 	once              sync.Once
 	proxyHeaderPolicy Policy
+	Validate          Validator
 	readErr           error
+}
+
+// Validator receives a header and decides whether it is a valid one
+// In case the header is not deemed valid it should return an error.
+type Validator func(*Header) error
+
+// ValidateHeader adds given validator for proxy headers to a connection when passed as option to NewConn()
+func ValidateHeader(v Validator) func(*Conn) {
+	return func(c *Conn) {
+		if v != nil {
+			c.Validate = v
+		}
+	}
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -46,7 +61,11 @@ func (p *Listener) Accept() (net.Conn, error) {
 		}
 	}
 
-	newConn := NewConn(conn, WithPolicy(proxyHeaderPolicy))
+	newConn := NewConn(
+		conn,
+		WithPolicy(proxyHeaderPolicy),
+		ValidateHeader(p.ValidateHeader),
+	)
 	return newConn, nil
 }
 
@@ -163,6 +182,13 @@ func (p *Conn) readHeader() error {
 			// this connection is not allowed to send one
 			return ErrSuperfluousProxyHeader
 		case USE:
+			if p.Validate != nil {
+				err = p.Validate(header)
+				if err != nil {
+					return err
+				}
+			}
+
 			p.header = header
 		}
 	}

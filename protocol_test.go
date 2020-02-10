@@ -451,3 +451,45 @@ func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
 		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
 	}
 }
+
+func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	validationError := fmt.Errorf("failed to validate")
+	pl := &Listener{Listener: l, ValidateHeader: func(*Header) error { return validationError }}
+
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		defer conn.Close()
+
+		// Write out the header!
+		header := &Header{
+			Version:            2,
+			Command:            PROXY,
+			TransportProtocol:  TCPv4,
+			SourceAddress:      net.ParseIP("10.1.1.1"),
+			SourcePort:         1000,
+			DestinationAddress: net.ParseIP("20.2.2.2"),
+			DestinationPort:    2000,
+		}
+		header.WriteTo(conn)
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer conn.Close()
+
+	recv := make([]byte, 4)
+	_, err = conn.Read(recv)
+	if err != validationError {
+		t.Fatalf("expected validation error, got %v", err)
+	}
+}
