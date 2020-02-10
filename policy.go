@@ -66,6 +66,7 @@ func whitelistPolicy(allowed []string, def Policy) PolicyFunc {
 	}
 }
 
+// WithPolicy adds given policy to a connection when passed as option to NewConn()
 func WithPolicy(p Policy) func(*Conn) {
 	return func(c *Conn) {
 		c.proxyHeaderPolicy = p
