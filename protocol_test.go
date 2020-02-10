@@ -357,3 +357,31 @@ func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {
 		t.Fatalf("bad: %v", addr)
 	}
 }
+
+func Test_AllOptionsAreRecognized(t *testing.T) {
+	recognizedOpt1 := false
+	opt1 := func(c *Conn) {
+		recognizedOpt1 = true
+	}
+
+	recognizedOpt2 := false
+	opt2 := func(c *Conn) {
+		recognizedOpt2 = true
+	}
+
+	server, client := net.Pipe()
+	defer func() {
+		client.Close()
+	}()
+
+	c := NewConn(server, opt1, opt2)
+	if !recognizedOpt1 {
+		t.Error("Expected option 1 recognized")
+	}
+
+	if !recognizedOpt2 {
+		t.Error("Expected option 2 recognized")
+	}
+
+	c.Close()
+}

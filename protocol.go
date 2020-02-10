@@ -45,7 +45,7 @@ func (p *Listener) Accept() (net.Conn, error) {
 		}
 	}
 
-	newConn := NewConn(conn, proxyHeaderPolicy)
+	newConn := NewConn(conn, WithPolicy(proxyHeaderPolicy))
 	return newConn, nil
 }
 
@@ -61,12 +61,16 @@ func (p *Listener) Addr() net.Addr {
 
 // NewConn is used to wrap a net.Conn that may be speaking
 // the proxy protocol into a proxyproto.Conn
-func NewConn(conn net.Conn, proxyHeaderPolicy Policy) *Conn {
+func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	pConn := &Conn{
-		bufReader:         bufio.NewReader(conn),
-		conn:              conn,
-		proxyHeaderPolicy: proxyHeaderPolicy,
+		bufReader: bufio.NewReader(conn),
+		conn:      conn,
 	}
+
+	for _, opt := range opts {
+		opt(pConn)
+	}
+
 	return pConn
 }
 

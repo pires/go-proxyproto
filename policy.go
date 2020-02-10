@@ -65,3 +65,9 @@ func whitelistPolicy(allowed []string, def Policy) PolicyFunc {
 		return def, nil
 	}
 }
+
+func WithPolicy(p Policy) func(*Conn) {
+	return func(c *Conn) {
+		c.proxyHeaderPolicy = p
+	}
+}
