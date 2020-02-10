@@ -25,7 +25,7 @@ type Conn struct {
 	conn              net.Conn
 	header            *Header
 	once              sync.Once
-	proxyHeaderPolicy Policy
+	ProxyHeaderPolicy Policy
 	Validate          Validator
 	readErr           error
 }
@@ -168,7 +168,7 @@ func (p *Conn) readHeader() error {
 	// let's act as if there was no error when PROXY protocol is not present.
 	if err == ErrNoProxyProtocol {
 		// but not if it is required that the connection has one
-		if p.proxyHeaderPolicy == REQUIRE {
+		if p.ProxyHeaderPolicy == REQUIRE {
 			return err
 		}
 
@@ -177,7 +177,7 @@ func (p *Conn) readHeader() error {
 
 	// proxy protocol header was found
 	if err == nil && header != nil {
-		switch p.proxyHeaderPolicy {
+		switch p.ProxyHeaderPolicy {
 		case REJECT:
 			// this connection is not allowed to send one
 			return ErrSuperfluousProxyHeader
