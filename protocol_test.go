@@ -385,3 +385,69 @@ func Test_AllOptionsAreRecognized(t *testing.T) {
 
 	c.Close()
 }
+
+func TestReadingIsRefusedOnErrorWhenRemoteAddrRequestedFirst(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
+
+	pl := &Listener{Listener: l, Policy: policyFunc}
+
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		defer conn.Close()
+		conn.Write([]byte("ping"))
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer conn.Close()
+
+	_ = conn.RemoteAddr()
+	recv := make([]byte, 4)
+	_, err = conn.Read(recv)
+	if err != ErrNoProxyProtocol {
+		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
+	}
+}
+
+func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
+
+	pl := &Listener{Listener: l, Policy: policyFunc}
+
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		defer conn.Close()
+		conn.Write([]byte("ping"))
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer conn.Close()
+
+	_ = conn.LocalAddr()
+	recv := make([]byte, 4)
+	_, err = conn.Read(recv)
+	if err != ErrNoProxyProtocol {
+		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
+	}
+}

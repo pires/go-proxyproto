@@ -25,6 +25,7 @@ type Conn struct {
 	header            *Header
 	once              sync.Once
 	proxyHeaderPolicy Policy
+	readErr           error
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -78,12 +79,11 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 // the initial scan. If there is an error parsing the header,
 // it is returned and the socket is closed.
 func (p *Conn) Read(b []byte) (int, error) {
-	var err error
 	p.once.Do(func() {
-		err = p.readHeader()
+		p.readErr = p.readHeader()
 	})
-	if err != nil {
-		return 0, err
+	if p.readErr != nil {
+		return 0, p.readErr
 	}
 	return p.bufReader.Read(b)
 }
@@ -100,10 +100,13 @@ func (p *Conn) Close() error {
 
 // LocalAddr returns the address of the server if the proxy
 // protocol is being used, otherwise just returns the address of
-// the socket server.
+// the socket server. In case an error happens on reading the
+// proxy header the original LocalAddr is returned, not the one
+// from the proxy header even if the proxy header itself is
+// syntactically correct.
 func (p *Conn) LocalAddr() net.Addr {
-	p.once.Do(func() { p.readHeader() })
-	if p.header == nil || p.header.Command.IsLocal() {
+	p.once.Do(func() { p.readErr = p.readHeader() })
+	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil {
 		return p.conn.LocalAddr()
 	}
 
@@ -112,10 +115,13 @@ func (p *Conn) LocalAddr() net.Addr {
 
 // RemoteAddr returns the address of the client if the proxy
 // protocol is being used, otherwise just returns the address of
-// the socket peer.
+// the socket peer. In case an error happens on reading the
+// proxy header the original RemoteAddr is returned, not the one
+// from the proxy header even if the proxy header itself is
+// syntactically correct.
 func (p *Conn) RemoteAddr() net.Addr {
-	p.once.Do(func() { p.readHeader() })
-	if p.header == nil || p.header.Command.IsLocal() {
+	p.once.Do(func() { p.readErr = p.readHeader() })
+	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil {
 		return p.conn.RemoteAddr()
 	}
 
