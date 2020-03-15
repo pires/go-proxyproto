@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Set up Go 1.13
+    - name: Set up Go 1.14
       uses: actions/setup-go@v1
       with:
-        go-version: 1.13
+        go-version: 1.14
       id: go
 
     - name: Check out code into the Go module directory
@@ -23,14 +23,14 @@ jobs:
       run: |
         go get golang.org/x/tools/cmd/cover
         go get github.com/mattn/goveralls
-    
+
     - name: Validate
       run: go vet
-      
+
     - name: Test
       run: go test -v -covermode=count -coverprofile=coverage.out
-    
+
     - name: actions-goveralls
-      uses: shogo82148/actions-goveralls@v1.0.0
+      uses: shogo82148/actions-goveralls@v1.2.2
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}

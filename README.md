@@ -3,7 +3,7 @@
 [![Actions Status](https://github.com/pires/go-proxyproto/workflows/test/badge.svg)](https://github.com/pires/go-proxyproto/actions)
 [![Coverage Status](https://coveralls.io/repos/github/pires/go-proxyproto/badge.svg?branch=master)](https://coveralls.io/github/pires/go-proxyproto?branch=master)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pires/go-proxyproto)](https://goreportcard.com/report/github.com/pires/go-proxyproto)
-[![](https://godoc.org/github.com/pires/go-proxyproto?status.svg)](http://godoc.org/github.com/pires/go-proxyproto)
+[![](https://godoc.org/github.com/pires/go-proxyproto?status.svg)](https://pkg.go.dev/github.com/pires/go-proxyproto?tab=doc)
 
 
 A Go library implementation of the [PROXY protocol, versions 1 and 2](http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt),
@@ -35,7 +35,7 @@ package main
 import (
 	"log"
 	"net"
-	
+
 	proxyproto "github.com/pires/go-proxyproto"
 )
 
