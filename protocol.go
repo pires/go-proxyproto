@@ -181,7 +181,7 @@ func (p *Conn) readHeader() error {
 		case REJECT:
 			// this connection is not allowed to send one
 			return ErrSuperfluousProxyHeader
-		case USE:
+		case USE, REQUIRE:
 			if p.Validate != nil {
 				err = p.Validate(header)
 				if err != nil {
