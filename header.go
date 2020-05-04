@@ -123,7 +123,12 @@ func (header *Header) TLVs() ([]TLV, error) {
 // Also, this operation will block until enough bytes are available for peeking.
 func Read(reader *bufio.Reader) (*Header, error) {
 	// In order to improve speed for small non-PROXYed packets, take a peek at the first byte alone.
-	if b1, err := reader.Peek(1); err == nil && (bytes.Equal(b1[:1], SIGV1[:1]) || bytes.Equal(b1[:1], SIGV2[:1])) {
+	b1, err := reader.Peek(1)
+	if err != nil {
+		return nil, err
+	}
+
+	if bytes.Equal(b1[:1], SIGV1[:1]) || bytes.Equal(b1[:1], SIGV2[:1]) {
 		if signature, err := reader.Peek(5); err == nil && bytes.Equal(signature[:5], SIGV1) {
 			return parseVersion1(reader)
 		} else if signature, err := reader.Peek(12); err == nil && bytes.Equal(signature[:12], SIGV2) {
