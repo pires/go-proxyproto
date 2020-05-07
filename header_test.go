@@ -3,6 +3,7 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -21,6 +22,8 @@ const (
 var (
 	v4addr = net.ParseIP(IP4_ADDR).To4()
 	v6addr = net.ParseIP(IP6_ADDR).To16()
+
+	errReadIntentionallyBroken = errors.New("read is intentionally broken")
 )
 
 type timeoutReader []byte
@@ -28,6 +31,12 @@ type timeoutReader []byte
 func (t *timeoutReader) Read([]byte) (int, error) {
 	time.Sleep(500 * time.Millisecond)
 	return 0, nil
+}
+
+type errorReader []byte
+
+func (e *errorReader) Read([]byte) (int, error) {
+	return 0, errReadIntentionallyBroken
 }
 
 func TestReadTimeoutV1Invalid(t *testing.T) {
@@ -38,6 +47,18 @@ func TestReadTimeoutV1Invalid(t *testing.T) {
 		t.Fatalf("expected error %s", ErrNoProxyProtocol)
 	} else if err != ErrNoProxyProtocol {
 		t.Fatalf("expected %s, actual %s", ErrNoProxyProtocol, err)
+	}
+}
+
+func TestReadTimeoutPropagatesReadError(t *testing.T) {
+	var e errorReader
+	reader := bufio.NewReader(&e)
+	_, err := ReadTimeout(reader, 50*time.Millisecond)
+
+	if err == nil {
+		t.Fatalf("expected error %s", errReadIntentionallyBroken)
+	} else if err != errReadIntentionallyBroken {
+		t.Fatalf("expected error %s, actual %s", errReadIntentionallyBroken, err)
 	}
 }
 
