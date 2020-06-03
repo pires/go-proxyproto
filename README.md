@@ -68,7 +68,9 @@ func main() {
 }
 ```
 
-## AWS
+## Special notes
+
+### AWS
 
 AWS Network Load Balancer (NLB) does not push the PPV2 header until the client starts sending the data. This is a problem if your server speaks first. e.g. SMTP, FTP, SSH etc.
 
