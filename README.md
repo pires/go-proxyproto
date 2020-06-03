@@ -67,3 +67,13 @@ func main() {
 	log.Printf("remote address: %q", conn.RemoteAddr().String())
 }
 ```
+
+## Special notes
+
+### AWS
+
+AWS Network Load Balancer (NLB) does not push the PPV2 header until the client starts sending the data. This is a problem if your server speaks first. e.g. SMTP, FTP, SSH etc.
+
+By default, NLB target group attribute `proxy_protocol_v2.client_to_server.header_placement` has the value `on_first_ack_with_payload`. You need to contact AWS support to change it to `on_first_ack`, instead.
+
+Just to be clear, you need this fix only if your server is designed to speak first.
