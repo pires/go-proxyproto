@@ -152,19 +152,19 @@ func (header *Header) formatVersion2() ([]byte, error) {
 	buf.WriteByte(header.TransportProtocol.toByte())
 	var addrSrc, addrDst []byte
 	if header.TransportProtocol.IsIPv4() {
-        hdrLen, err := addTLVLen(lengthV4Bytes, len(header.rawTLVs))
-        if err != nil {
-            return nil, err
-        }
-        buf.Write(hdrLen)
+		hdrLen, err := addTLVLen(lengthV4Bytes, len(header.rawTLVs))
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(hdrLen)
 		addrSrc = header.SourceAddress.To4()
 		addrDst = header.DestinationAddress.To4()
 	} else if header.TransportProtocol.IsIPv6() {
-        hdrLen, err := addTLVLen(lengthV6Bytes, len(header.rawTLVs))
-        if err != nil {
-            return nil, err
-        }
-        buf.Write(hdrLen)
+		hdrLen, err := addTLVLen(lengthV6Bytes, len(header.rawTLVs))
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(hdrLen)
 		addrSrc = header.SourceAddress.To16()
 		addrDst = header.DestinationAddress.To16()
 	} else if header.TransportProtocol.IsUnix() {
@@ -189,9 +189,9 @@ func (header *Header) formatVersion2() ([]byte, error) {
 		return a
 	}()
 	buf.Write(portDstBytes)
-    if len(header.rawTLVs) > 0 {
-        buf.Write(header.rawTLVs)
-    }
+	if len(header.rawTLVs) > 0 {
+		buf.Write(header.rawTLVs)
+	}
 
 	return buf.Bytes(), nil
 }

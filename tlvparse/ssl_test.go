@@ -88,4 +88,3 @@ func TestParseV2TLV(t *testing.T) {
 		})
 	}
 }
-

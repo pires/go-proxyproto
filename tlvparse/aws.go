@@ -15,7 +15,7 @@ const (
 	PP2_SUBTYPE_AWS_VPCE_ID = 0x01
 )
 
-var	vpceRe = regexp.MustCompile("^[A-Za-z0-9-]*$")
+var vpceRe = regexp.MustCompile("^[A-Za-z0-9-]*$")
 
 func IsAWSVPCEndpointID(tlv proxyproto.TLV) bool {
 	return tlv.Type == PP2_TYPE_AWS && tlv.Length >= 1 && tlv.Value[0] == PP2_SUBTYPE_AWS_VPCE_ID
