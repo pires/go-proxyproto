@@ -67,11 +67,13 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 func (header *Header) formatVersion1() ([]byte, error) {
 	// As of version 1, only "TCP4" ( \x54 \x43 \x50 \x34 ) for TCP over IPv4,
 	// and "TCP6" ( \x54 \x43 \x50 \x36 ) for TCP over IPv6 are allowed.
-	proto := "UNKNOWN"
+	var proto string
 	if header.TransportProtocol == TCPv4 {
 		proto = "TCP4"
 	} else if header.TransportProtocol == TCPv6 {
 		proto = "TCP6"
+	} else {
+		return []byte("PROXY UNKNOWN\r\n"), nil
 	}
 
 	var buf bytes.Buffer
