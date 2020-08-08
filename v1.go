@@ -76,7 +76,7 @@ func (header *Header) formatVersion1() ([]byte, error) {
 		return []byte("PROXY UNKNOWN\r\n"), nil
 	}
 
-	var buf bytes.Buffer
+	buf := bytes.NewBuffer(make([]byte, 0, 108))
 	buf.Write(SIGV1)
 	buf.WriteString(SEPARATOR)
 	buf.WriteString(proto)
