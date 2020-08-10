@@ -81,7 +81,6 @@ func IsSSL(t proxyproto.TLV) bool {
 	return t.Type == proxyproto.PP2_TYPE_SSL && t.Length >= tlvSSLMinLen
 }
 
-
 // SSL returns the pp2_tlv_ssl from section 2.2.5 or errors with ErrIncompatibleTLV or ErrMalformedTLV
 func SSL(t proxyproto.TLV) (PP2SSL, error) {
 	ssl := PP2SSL{}
