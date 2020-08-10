@@ -73,6 +73,7 @@ func (header *Header) formatVersion1() ([]byte, error) {
 	} else if header.TransportProtocol == TCPv6 {
 		proto = "TCP6"
 	} else {
+		// Unknown connection (short form)
 		return []byte("PROXY UNKNOWN\r\n"), nil
 	}
 
