@@ -16,19 +16,19 @@ var (
 	SIGV1 = []byte{'\x50', '\x52', '\x4F', '\x58', '\x59'}
 	SIGV2 = []byte{'\x0D', '\x0A', '\x0D', '\x0A', '\x00', '\x0D', '\x0A', '\x51', '\x55', '\x49', '\x54', '\x0A'}
 
-	ErrCantReadProtocolVersionAndCommand    = errors.New("Can't read proxy protocol version and command")
-	ErrCantReadAddressFamilyAndProtocol     = errors.New("Can't read address family or protocol")
-	ErrCantReadLength                       = errors.New("Can't read length")
-	ErrCantResolveSourceUnixAddress         = errors.New("Can't resolve source Unix address")
-	ErrCantResolveDestinationUnixAddress    = errors.New("Can't resolve destination Unix address")
-	ErrNoProxyProtocol                      = errors.New("Proxy protocol signature not present")
-	ErrUnknownProxyProtocolVersion          = errors.New("Unknown proxy protocol version")
-	ErrUnsupportedProtocolVersionAndCommand = errors.New("Unsupported proxy protocol version and command")
-	ErrUnsupportedAddressFamilyAndProtocol  = errors.New("Unsupported address family and protocol")
-	ErrInvalidLength                        = errors.New("Invalid length")
-	ErrInvalidAddress                       = errors.New("Invalid address")
-	ErrInvalidPortNumber                    = errors.New("Invalid port number")
-	ErrSuperfluousProxyHeader               = errors.New("Upstream connection sent PROXY header but isn't allowed to send one")
+	ErrCantReadProtocolVersionAndCommand    = errors.New("proxyproto: can't read proxy protocol version and command")
+	ErrCantReadAddressFamilyAndProtocol     = errors.New("proxyproto: can't read address family or protocol")
+	ErrCantReadLength                       = errors.New("proxyproto: can't read length")
+	ErrCantResolveSourceUnixAddress         = errors.New("proxyproto: can't resolve source Unix address")
+	ErrCantResolveDestinationUnixAddress    = errors.New("proxyproto: can't resolve destination Unix address")
+	ErrNoProxyProtocol                      = errors.New("proxyproto: proxy protocol signature not present")
+	ErrUnknownProxyProtocolVersion          = errors.New("proxyproto: unknown proxy protocol version")
+	ErrUnsupportedProtocolVersionAndCommand = errors.New("proxyproto: unsupported proxy protocol version and command")
+	ErrUnsupportedAddressFamilyAndProtocol  = errors.New("proxyproto: unsupported address family and protocol")
+	ErrInvalidLength                        = errors.New("proxyproto: invalid length")
+	ErrInvalidAddress                       = errors.New("proxyproto: invalid address")
+	ErrInvalidPortNumber                    = errors.New("proxyproto: invalid port number")
+	ErrSuperfluousProxyHeader               = errors.New("proxyproto: upstream connection sent PROXY header but isn't allowed to send one")
 )
 
 // Header is the placeholder for proxy protocol header.
