@@ -43,6 +43,69 @@ type Header struct {
 	rawTLVs            []byte
 }
 
+// HeaderProxyFromAddrs creates a new PROXY header from a source and a
+// destination address. If version is zero, the latest protocol version is
+// used.
+//
+// The header is filled on a best-effort basis: if hints cannot be inferred
+// from the provided addresses, the header will be left unspecified.
+func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
+	if version < 1 || version > 2 {
+		version = 2
+	}
+	h := &Header{
+		Version:           version,
+		Command:           PROXY,
+		TransportProtocol: UNSPEC,
+	}
+	switch sourceAddr := sourceAddr.(type) {
+	case *net.TCPAddr:
+		destAddr, ok := destAddr.(*net.TCPAddr)
+		if !ok {
+			break
+		}
+		if len(sourceAddr.IP.To4()) == net.IPv4len {
+			h.TransportProtocol = TCPv4
+		} else if len(sourceAddr.IP) == net.IPv6len {
+			h.TransportProtocol = TCPv6
+		} else {
+			break
+		}
+		h.SourceAddress = sourceAddr.IP
+		h.DestinationAddress = destAddr.IP
+		h.SourcePort = uint16(sourceAddr.Port)
+		h.DestinationPort = uint16(destAddr.Port)
+	case *net.UDPAddr:
+		destAddr, ok := destAddr.(*net.UDPAddr)
+		if !ok {
+			break
+		}
+		if len(sourceAddr.IP.To4()) == net.IPv4len {
+			h.TransportProtocol = UDPv4
+		} else if len(sourceAddr.IP) == net.IPv6len {
+			h.TransportProtocol = UDPv6
+		} else {
+			break
+		}
+		h.SourceAddress = sourceAddr.IP
+		h.DestinationAddress = destAddr.IP
+		h.SourcePort = uint16(sourceAddr.Port)
+		h.DestinationPort = uint16(destAddr.Port)
+	case *net.UnixAddr:
+		_, ok := destAddr.(*net.UnixAddr)
+		if !ok {
+			break
+		}
+		switch sourceAddr.Net {
+		case "unix":
+			h.TransportProtocol = UnixStream
+		case "unixgram":
+			h.TransportProtocol = UnixDatagram
+		}
+	}
+	return h
+}
+
 // RemoteAddr returns the address of the remote endpoint of the connection.
 func (header *Header) RemoteAddr() net.Addr {
 	return &net.TCPAddr{
