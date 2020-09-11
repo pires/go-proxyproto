@@ -9,12 +9,12 @@ import (
 )
 
 var (
-	TCP4AddressesAndPorts        = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, SEPARATOR)
-	TCP4AddressesAndInvalidPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(INVALID_PORT), strconv.Itoa(INVALID_PORT)}, SEPARATOR)
-	TCP6AddressesAndPorts        = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, SEPARATOR)
+	TCP4AddressesAndPorts        = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
+	TCP4AddressesAndInvalidPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(INVALID_PORT), strconv.Itoa(INVALID_PORT)}, separator)
+	TCP6AddressesAndPorts        = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 
-	fixtureTCP4V1 = "PROXY TCP4 " + TCP4AddressesAndPorts + CRLF + "GET /"
-	fixtureTCP6V1 = "PROXY TCP6 " + TCP6AddressesAndPorts + CRLF + "GET /"
+	fixtureTCP4V1 = "PROXY TCP4 " + TCP4AddressesAndPorts + crlf + "GET /"
+	fixtureTCP6V1 = "PROXY TCP6 " + TCP6AddressesAndPorts + crlf + "GET /"
 )
 
 var invalidParseV1Tests = []struct {
@@ -38,15 +38,15 @@ var invalidParseV1Tests = []struct {
 		ErrCantReadProtocolVersionAndCommand,
 	},
 	{
-		newBufioReader([]byte("PROXY TCP6 " + TCP4AddressesAndPorts + CRLF)),
+		newBufioReader([]byte("PROXY TCP6 " + TCP4AddressesAndPorts + crlf)),
 		ErrInvalidAddress,
 	},
 	{
-		newBufioReader([]byte("PROXY TCP4 " + TCP6AddressesAndPorts + CRLF)),
+		newBufioReader([]byte("PROXY TCP4 " + TCP6AddressesAndPorts + crlf)),
 		ErrInvalidAddress,
 	},
 	// PROXY TCP IPv4
-	{newBufioReader([]byte("PROXY TCP4 " + TCP4AddressesAndInvalidPorts + CRLF)),
+	{newBufioReader([]byte("PROXY TCP4 " + TCP4AddressesAndInvalidPorts + crlf)),
 		ErrInvalidPortNumber,
 	},
 }
