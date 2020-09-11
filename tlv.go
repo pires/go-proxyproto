@@ -32,9 +32,9 @@ const (
 )
 
 var (
-	ErrTruncatedTLV    = errors.New("Truncated TLV")
-	ErrMalformedTLV    = errors.New("Malformed TLV Value")
-	ErrIncompatibleTLV = errors.New("Incompatible TLV type")
+	ErrTruncatedTLV    = errors.New("proxyproto: truncated TLV")
+	ErrMalformedTLV    = errors.New("proxyproto: malformed TLV Value")
+	ErrIncompatibleTLV = errors.New("proxyproto: incompatible TLV type")
 )
 
 // PP2Type is the proxy protocol v2 type

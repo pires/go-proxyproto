@@ -28,7 +28,7 @@ var (
 		binary.BigEndian.PutUint16(a, lengthUnix)
 		return a
 	}()
-	errUint16Overflow = errors.New("uint16 overflow")
+	errUint16Overflow = errors.New("proxyproto: uint16 overflow")
 )
 
 type _ports struct {
