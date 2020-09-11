@@ -4,13 +4,13 @@ package proxyproto
 type AddressFamilyAndProtocol byte
 
 const (
-	UNSPEC       = '\x00'
-	TCPv4        = '\x11'
-	UDPv4        = '\x12'
-	TCPv6        = '\x21'
-	UDPv6        = '\x22'
-	UnixStream   = '\x31'
-	UnixDatagram = '\x32'
+	UNSPEC       AddressFamilyAndProtocol = '\x00'
+	TCPv4        AddressFamilyAndProtocol = '\x11'
+	UDPv4        AddressFamilyAndProtocol = '\x12'
+	TCPv6        AddressFamilyAndProtocol = '\x21'
+	UDPv6        AddressFamilyAndProtocol = '\x22'
+	UnixStream   AddressFamilyAndProtocol = '\x31'
+	UnixDatagram AddressFamilyAndProtocol = '\x32'
 )
 
 var supportedTransportProtocol = map[AddressFamilyAndProtocol]bool{
@@ -54,18 +54,18 @@ func (ap AddressFamilyAndProtocol) IsUnspec() bool {
 
 func (ap AddressFamilyAndProtocol) toByte() byte {
 	if ap.IsIPv4() && ap.IsStream() {
-		return TCPv4
+		return byte(TCPv4)
 	} else if ap.IsIPv4() && ap.IsDatagram() {
-		return UDPv4
+		return byte(UDPv4)
 	} else if ap.IsIPv6() && ap.IsStream() {
-		return TCPv6
+		return byte(TCPv6)
 	} else if ap.IsIPv6() && ap.IsDatagram() {
-		return UDPv6
+		return byte(UDPv6)
 	} else if ap.IsUnix() && ap.IsStream() {
-		return UnixStream
+		return byte(UnixStream)
 	} else if ap.IsUnix() && ap.IsDatagram() {
-		return UnixDatagram
+		return byte(UnixDatagram)
 	}
 
-	return UNSPEC
+	return byte(UNSPEC)
 }

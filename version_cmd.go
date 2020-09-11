@@ -4,8 +4,8 @@ package proxyproto
 type ProtocolVersionAndCommand byte
 
 const (
-	LOCAL = '\x20'
-	PROXY = '\x21'
+	LOCAL ProtocolVersionAndCommand = '\x20'
+	PROXY ProtocolVersionAndCommand = '\x21'
 )
 
 var supportedCommand = map[ProtocolVersionAndCommand]bool{
@@ -30,10 +30,10 @@ func (pvc ProtocolVersionAndCommand) IsUnspec() bool {
 
 func (pvc ProtocolVersionAndCommand) toByte() byte {
 	if pvc.IsLocal() {
-		return LOCAL
+		return byte(LOCAL)
 	} else if pvc.IsProxy() {
-		return PROXY
+		return byte(PROXY)
 	}
 
-	return LOCAL
+	return byte(LOCAL)
 }

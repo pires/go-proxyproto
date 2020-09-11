@@ -8,10 +8,10 @@ import (
 )
 
 var (
-	fixtureOneByteTLV    = []byte{PP2_TYPE_MIN_CUSTOM + 1}
-	fixtureTwoByteTLV    = []byte{PP2_TYPE_MIN_CUSTOM + 2, 0x00}
-	fixtureEmptyLenTLV   = []byte{PP2_TYPE_MIN_CUSTOM + 3, 0x00, 0x01}
-	fixturePartialLenTLV = []byte{PP2_TYPE_MIN_CUSTOM + 3, 0x00, 0x02, 0x00}
+	fixtureOneByteTLV    = []byte{byte(PP2_TYPE_MIN_CUSTOM) + 1}
+	fixtureTwoByteTLV    = []byte{byte(PP2_TYPE_MIN_CUSTOM) + 2, 0x00}
+	fixtureEmptyLenTLV   = []byte{byte(PP2_TYPE_MIN_CUSTOM) + 3, 0x00, 0x01}
+	fixturePartialLenTLV = []byte{byte(PP2_TYPE_MIN_CUSTOM) + 3, 0x00, 0x02, 0x00}
 )
 
 func checkTLVs(t *testing.T, name string, raw []byte, expected []PP2Type) []TLV {
@@ -52,25 +52,25 @@ var invalidTLVTests = []struct {
 }{
 	{
 		name: "One byte TLV",
-		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
 			fixtureOneByteTLV)...)),
 		expectedError: ErrTruncatedTLV,
 	},
 	{
 		name: "Two byte TLV",
-		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
 			fixtureTwoByteTLV)...)),
 		expectedError: ErrTruncatedTLV,
 	},
 	{
 		name: "Empty Len TLV",
-		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
 			fixtureEmptyLenTLV)...)),
 		expectedError: ErrTruncatedTLV,
 	},
 	{
 		name: "Partial Len TLV",
-		reader: newBufioReader(append(append(SIGV2, PROXY, TCPv4), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address,
 			fixturePartialLenTLV)...)),
 		expectedError: ErrTruncatedTLV,
 	},
