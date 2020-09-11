@@ -38,13 +38,6 @@ func checkTLVs(t *testing.T, name string, raw []byte, expected []PP2Type) []TLV 
 	return tlvs
 }
 
-func formatTLV(tlv TLV) []byte {
-	out := make([]byte, 3) // 1 = type + 2 = uint16 length
-	out[0] = byte(tlv.Type)
-	binary.BigEndian.PutUint16(out[1:3], uint16(tlv.Length))
-	return append(out, tlv.Value...)
-}
-
 var invalidTLVTests = []struct {
 	name          string
 	reader        *bufio.Reader
