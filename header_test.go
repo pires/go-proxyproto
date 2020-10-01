@@ -184,6 +184,57 @@ func TestLocalAddr(t *testing.T) {
 	}
 }
 
+func TestSetTLVs(t *testing.T) {
+	tests := []struct {
+		header    *Header
+		name      string
+		tlvs      []TLV
+		expectErr bool
+	}{
+		{
+			name: "add authority TLV",
+			header: &Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			tlvs: []TLV{{
+				Type:   PP2_TYPE_AUTHORITY,
+				Length: 11,
+				Value:  []byte("example.org"),
+			}},
+		},
+		{
+			name: "add wrong length",
+			header: &Header{
+				Version:            1,
+				Command:            PROXY,
+				TransportProtocol:  TCPv4,
+				SourceAddress:      net.ParseIP("10.1.1.1"),
+				SourcePort:         1000,
+				DestinationAddress: net.ParseIP("20.2.2.2"),
+				DestinationPort:    2000,
+			},
+			tlvs: []TLV{{
+				Type:   PP2_TYPE_AUTHORITY,
+				Length: 1,
+				Value:  []byte("example.org"),
+			}},
+			expectErr: true,
+		},
+	}
+	for _, tt := range tests {
+		err := tt.header.SetTLVs(tt.tlvs)
+		if err != nil && !tt.expectErr {
+			t.Fatalf("shouldn't have thrown error %q", err.Error())
+		}
+	}
+}
+
 func TestRemoteAddr(t *testing.T) {
 	var headers = []struct {
 		header       *Header
