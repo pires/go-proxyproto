@@ -3,7 +3,6 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"testing"
 )
 
@@ -36,13 +35,6 @@ func checkTLVs(t *testing.T, name string, raw []byte, expected []PP2Type) []TLV 
 	}
 
 	return tlvs
-}
-
-func formatTLV(tlv TLV) []byte {
-	out := make([]byte, 3) // 1 = type + 2 = uint16 length
-	out[0] = byte(tlv.Type)
-	binary.BigEndian.PutUint16(out[1:3], uint16(tlv.Length))
-	return append(out, tlv.Value...)
 }
 
 var invalidTLVTests = []struct {
@@ -126,5 +118,41 @@ func TestV2TLVPP2Registered(t *testing.T) {
 
 	if lastType.Registered() {
 		t.Fatalf("TestV2TLVPP2Registered: type %x unexpectedly registered", lastType)
+	}
+}
+
+func TestJoinTLVs(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  []byte
+		tlvs []TLV
+	}{
+		{
+			name: "authority TLV",
+			raw:  append([]byte{byte(PP2_TYPE_AUTHORITY), 0x00, 0x0B}, []byte("example.org")...),
+			tlvs: []TLV{{
+				Type:   PP2_TYPE_AUTHORITY,
+				Length: 11,
+				Value:  []byte("example.org"),
+			}},
+		},
+		{
+			name: "empty TLV",
+			raw:  []byte{byte(PP2_TYPE_NOOP), 0x00, 0x00},
+			tlvs: []TLV{{
+				Type:   PP2_TYPE_NOOP,
+				Length: 0,
+				Value:  nil,
+			}},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if raw, err := JoinTLVs(tc.tlvs); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			} else if !bytes.Equal(raw, tc.raw) {
+				t.Errorf("expected %#v, got %#v", tc.raw, raw)
+			}
+		})
 	}
 }

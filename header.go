@@ -175,6 +175,17 @@ func (header *Header) TLVs() ([]TLV, error) {
 	return SplitTLVs(header.rawTLVs)
 }
 
+// SetTLVs sets the TLVs stored in this header. This method replaces any
+// previous TLV.
+func (header *Header) SetTLVs(tlvs []TLV) error {
+	raw, err := JoinTLVs(tlvs)
+	if err != nil {
+		return err
+	}
+	header.rawTLVs = raw
+	return nil
+}
+
 // Read identifies the proxy protocol version and reads the remaining of
 // the header, accordingly.
 //

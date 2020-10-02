@@ -6,6 +6,8 @@ package proxyproto
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"math"
 )
 
 const (
@@ -71,6 +73,25 @@ func SplitTLVs(raw []byte) ([]TLV, error) {
 		tlvs = append(tlvs, tlv)
 	}
 	return tlvs, nil
+}
+
+// JoinTLVs joins multiple Type-Length-Value records.
+func JoinTLVs(tlvs []TLV) ([]byte, error) {
+	var raw []byte
+	for _, tlv := range tlvs {
+		if tlv.Length > math.MaxUint16 {
+			return nil, fmt.Errorf("proxyproto: cannot format TLV %v with length %d", tlv.Type, tlv.Length)
+		}
+		if tlv.Length != len(tlv.Value) {
+			return nil, fmt.Errorf("proxyproto: TLV %v length doesn't match value length", tlv.Type)
+		}
+		var length [2]byte
+		binary.BigEndian.PutUint16(length[:], uint16(tlv.Length))
+		raw = append(raw, byte(tlv.Type))
+		raw = append(raw, length[:]...)
+		raw = append(raw, tlv.Value...)
+	}
+	return raw, nil
 }
 
 // Registered is true if the type is registered in the spec, see section 2.2
