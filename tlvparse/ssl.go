@@ -65,6 +65,25 @@ func (s PP2SSL) SSLVersion() (string, bool) {
 	return "", false
 }
 
+// Marshal formats the PP2SSL structure as a TLV.
+func (s PP2SSL) Marshal() (proxyproto.TLV, error) {
+	v := make([]byte, 5)
+	v[0] = s.Client
+	binary.BigEndian.PutUint32(v[1:5], s.Verify)
+
+	tlvs, err := proxyproto.JoinTLVs(s.TLV)
+	if err != nil {
+		return proxyproto.TLV{}, err
+	}
+	v = append(v, tlvs...)
+
+	return proxyproto.TLV{
+		Type:   proxyproto.PP2_TYPE_SSL,
+		Length: len(v),
+		Value:  v,
+	}, nil
+}
+
 // ClientCN returns the string representation (in UTF8) of the Common Name field (OID: 2.5.4.3) of the client
 // certificate's Distinguished Name and whether that extension exists.
 func (s PP2SSL) ClientCN() (string, bool) {
