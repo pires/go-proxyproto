@@ -6,7 +6,7 @@
 [![](https://godoc.org/github.com/pires/go-proxyproto?status.svg)](https://pkg.go.dev/github.com/pires/go-proxyproto?tab=doc)
 
 
-A Go library implementation of the [PROXY protocol, versions 1 and 2](http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt),
+A Go library implementation of the [PROXY protocol, versions 1 and 2](https://www.haproxy.org/download/2.3/doc/proxy-protocol.txt),
 which provides, as per specification:
 > (...) a convenient way to safely transport connection
 > information such as a client's address across multiple layers of NAT or TCP

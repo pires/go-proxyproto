@@ -1,5 +1,5 @@
 // Package proxyproto implements Proxy Protocol (v1 and v2) parser and writer, as per specification:
-// http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt
+// https://www.haproxy.org/download/2.3/doc/proxy-protocol.txt
 package proxyproto
 
 import (
