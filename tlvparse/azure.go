@@ -17,7 +17,7 @@ const (
 
 // IsAzurePrivateEndpointLinkID returns true if given TLV matches Azure Private Endpoint LinkID format
 func isAzurePrivateEndpointLinkID(tlv proxyproto.TLV) bool {
-	return tlv.Type == PP2_TYPE_AZURE && tlv.Length == 5 && tlv.Value[0] == PP2_SUBTYPE_AZURE_PRIVATEENDPOINT_LINKID
+	return tlv.Type == PP2_TYPE_AZURE && len(tlv.Value) == 5 && tlv.Value[0] == PP2_SUBTYPE_AZURE_PRIVATEENDPOINT_LINKID
 }
 
 // AzurePrivateEndpointLinkID returns linkID if given TLV matches Azure Private Endpoint LinkID format

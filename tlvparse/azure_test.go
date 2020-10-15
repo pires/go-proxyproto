@@ -29,9 +29,8 @@ func TestFindAzurePrivateEndpointLinkID(t *testing.T) {
 			name: "AWS VPC endpoint ID",
 			tlvs: []proxyproto.TLV{
 				{
-					Type:   0xEA,
-					Length: 12,
-					Value:  []byte{0x01, 0x76, 0x70, 0x63, 0x65, 0x2d, 0x61, 0x62, 0x63, 0x31, 0x32, 0x33},
+					Type:  0xEA,
+					Value: []byte{0x01, 0x76, 0x70, 0x63, 0x65, 0x2d, 0x61, 0x62, 0x63, 0x31, 0x32, 0x33},
 				},
 			},
 			wantLinkID: 0,
@@ -41,9 +40,8 @@ func TestFindAzurePrivateEndpointLinkID(t *testing.T) {
 			name: "Azure but wrong subtype",
 			tlvs: []proxyproto.TLV{
 				{
-					Type:   0xEE,
-					Length: 5,
-					Value:  []byte{0x02, 0x01, 0x01, 0x01, 0x01},
+					Type:  0xEE,
+					Value: []byte{0x02, 0x01, 0x01, 0x01, 0x01},
 				},
 			},
 			wantLinkID: 0,
@@ -53,9 +51,8 @@ func TestFindAzurePrivateEndpointLinkID(t *testing.T) {
 			name: "Azure but wrong length",
 			tlvs: []proxyproto.TLV{
 				{
-					Type:   0xEE,
-					Length: 3,
-					Value:  []byte{0x02, 0x01, 0x01},
+					Type:  0xEE,
+					Value: []byte{0x02, 0x01, 0x01},
 				},
 			},
 			wantLinkID: 0,
@@ -65,9 +62,8 @@ func TestFindAzurePrivateEndpointLinkID(t *testing.T) {
 			name: "Azure link ID",
 			tlvs: []proxyproto.TLV{
 				{
-					Type:   0xEE,
-					Length: 5,
-					Value:  []byte{0x1, 0xc1, 0x45, 0x0, 0x21},
+					Type:  0xEE,
+					Value: []byte{0x1, 0xc1, 0x45, 0x0, 0x21},
 				},
 			},
 			wantLinkID: 0x210045c1,
@@ -77,29 +73,24 @@ func TestFindAzurePrivateEndpointLinkID(t *testing.T) {
 			name: "Multiple TLVs",
 			tlvs: []proxyproto.TLV{
 				{ // AWS
-					Type:   0xEA,
-					Length: 12,
-					Value:  []byte{0x01, 0x76, 0x70, 0x63, 0x65, 0x2d, 0x61, 0x62, 0x63, 0x31, 0x32, 0x33},
+					Type:  0xEA,
+					Value: []byte{0x01, 0x76, 0x70, 0x63, 0x65, 0x2d, 0x61, 0x62, 0x63, 0x31, 0x32, 0x33},
 				},
 				{ // Azure but wrong subtype
-					Type:   0xEE,
-					Length: 5,
-					Value:  []byte{0x02, 0x01, 0x01, 0x01, 0x01},
+					Type:  0xEE,
+					Value: []byte{0x02, 0x01, 0x01, 0x01, 0x01},
 				},
 				{ // Azure but wrong length
-					Type:   0xEE,
-					Length: 3,
-					Value:  []byte{0x02, 0x01, 0x01},
+					Type:  0xEE,
+					Value: []byte{0x02, 0x01, 0x01},
 				},
 				{ // Correct
-					Type:   0xEE,
-					Length: 5,
-					Value:  []byte{0x1, 0xc1, 0x45, 0x0, 0x21},
+					Type:  0xEE,
+					Value: []byte{0x1, 0xc1, 0x45, 0x0, 0x21},
 				},
 				{ // Also correct, but second in line
-					Type:   0xEE,
-					Length: 5,
-					Value:  []byte{0x1, 0xc1, 0x45, 0x0, 0x22},
+					Type:  0xEE,
+					Value: []byte{0x1, 0xc1, 0x45, 0x0, 0x22},
 				},
 			},
 			wantLinkID: 0x210045c1,

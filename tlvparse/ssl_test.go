@@ -98,23 +98,20 @@ func TestPP2SSLMarshal(t *testing.T) {
 		Verify: 0,
 		TLV: []proxyproto.TLV{
 			{
-				Type:   proxyproto.PP2_SUBTYPE_SSL_VERSION,
-				Length: len(ver),
-				Value:  []byte(ver),
+				Type:  proxyproto.PP2_SUBTYPE_SSL_VERSION,
+				Value: []byte(ver),
 			},
 			{
-				Type:   proxyproto.PP2_SUBTYPE_SSL_CN,
-				Length: len(cn),
-				Value:  []byte(cn),
+				Type:  proxyproto.PP2_SUBTYPE_SSL_CN,
+				Value: []byte(cn),
 			},
 		},
 	}
 
 	raw := []byte{0x1, 0x0, 0x0, 0x0, 0x0, 0x21, 0x0, 0x7, 0x54, 0x4c, 0x53, 0x76, 0x31, 0x2e, 0x33, 0x22, 0x0, 0xb, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x6f, 0x72, 0x67}
 	want := proxyproto.TLV{
-		Type:   proxyproto.PP2_TYPE_SSL,
-		Length: len(raw),
-		Value:  raw,
+		Type:  proxyproto.PP2_TYPE_SSL,
+		Value: raw,
 	}
 
 	tlv, err := pp2.Marshal()
