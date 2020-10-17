@@ -45,22 +45,31 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	}
 
 	// Read addresses and ports
-	header.SourceAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[2])
+	sourceIP, err := parseV1IPAddress(header.TransportProtocol, tokens[2])
 	if err != nil {
 		return nil, err
 	}
-	header.DestinationAddress, err = parseV1IPAddress(header.TransportProtocol, tokens[3])
+	destIP, err := parseV1IPAddress(header.TransportProtocol, tokens[3])
 	if err != nil {
 		return nil, err
 	}
-	header.SourcePort, err = parseV1PortNumber(tokens[4])
+	sourcePort, err := parseV1PortNumber(tokens[4])
 	if err != nil {
 		return nil, err
 	}
-	header.DestinationPort, err = parseV1PortNumber(tokens[5])
+	destPort, err := parseV1PortNumber(tokens[5])
 	if err != nil {
 		return nil, err
 	}
+	header.SourceAddr = &net.TCPAddr{
+		IP:   sourceIP,
+		Port: sourcePort,
+	}
+	header.DestinationAddr = &net.TCPAddr{
+		IP:   destIP,
+		Port: destPort,
+	}
+
 	return header, nil
 }
 
@@ -77,36 +86,32 @@ func (header *Header) formatVersion1() ([]byte, error) {
 		return []byte("PROXY UNKNOWN\r\n"), nil
 	}
 
+	sourceAddr := header.SourceAddr.(*net.TCPAddr)
+	destAddr := header.DestinationAddr.(*net.TCPAddr)
+
 	buf := bytes.NewBuffer(make([]byte, 0, 108))
 	buf.Write(SIGV1)
 	buf.WriteString(separator)
 	buf.WriteString(proto)
 	buf.WriteString(separator)
-	buf.WriteString(header.SourceAddress.String())
+	buf.WriteString(sourceAddr.IP.String())
 	buf.WriteString(separator)
-	buf.WriteString(header.DestinationAddress.String())
+	buf.WriteString(destAddr.IP.String())
 	buf.WriteString(separator)
-	buf.WriteString(strconv.Itoa(int(header.SourcePort)))
+	buf.WriteString(strconv.Itoa(sourceAddr.Port))
 	buf.WriteString(separator)
-	buf.WriteString(strconv.Itoa(int(header.DestinationPort)))
+	buf.WriteString(strconv.Itoa(destAddr.Port))
 	buf.WriteString(crlf)
 
 	return buf.Bytes(), nil
 }
 
-func parseV1PortNumber(portStr string) (port uint16, err error) {
-	_port, _err := strconv.Atoi(portStr)
-	if _err == nil {
-		if _port < 0 || _port > 65535 {
-			err = ErrInvalidPortNumber
-		} else {
-			port = uint16(_port)
-		}
-	} else {
-		err = ErrInvalidPortNumber
+func parseV1PortNumber(portStr string) (int, error) {
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 0 || port > 65535 {
+		return 0, ErrInvalidPortNumber
 	}
-
-	return
+	return port, nil
 }
 
 func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (addr net.IP, err error) {

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"net"
 )
 
 var (
@@ -107,19 +108,15 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
 			return nil, ErrInvalidAddress
 		}
-		header.SourceAddress = addr.Src[:]
-		header.DestinationAddress = addr.Dst[:]
-		header.SourcePort = addr.SrcPort
-		header.DestinationPort = addr.DstPort
+		header.SourceAddr = newIPAddr(header.TransportProtocol, addr.Src[:], addr.SrcPort)
+		header.DestinationAddr = newIPAddr(header.TransportProtocol, addr.Dst[:], addr.DstPort)
 	} else if header.TransportProtocol.IsIPv6() {
 		var addr _addr6
 		if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
 			return nil, ErrInvalidAddress
 		}
-		header.SourceAddress = addr.Src[:]
-		header.DestinationAddress = addr.Dst[:]
-		header.SourcePort = addr.SrcPort
-		header.DestinationPort = addr.DstPort
+		header.SourceAddr = newIPAddr(header.TransportProtocol, addr.Src[:], addr.SrcPort)
+		header.DestinationAddr = newIPAddr(header.TransportProtocol, addr.Dst[:], addr.DstPort)
 	}
 	// TODO fully support Unix addresses
 	//	else if header.TransportProtocol.IsUnix() {
@@ -157,38 +154,43 @@ func (header *Header) formatVersion2() ([]byte, error) {
 			return nil, err
 		}
 		buf.Write(hdrLen)
-		addrSrc = header.SourceAddress.To4()
-		addrDst = header.DestinationAddress.To4()
+		sourceIP, destIP, _ := header.IPs()
+		addrSrc = sourceIP.To4()
+		addrDst = destIP.To4()
 	} else if header.TransportProtocol.IsIPv6() {
 		hdrLen, err := addTLVLen(lengthV6Bytes, len(header.rawTLVs))
 		if err != nil {
 			return nil, err
 		}
 		buf.Write(hdrLen)
-		addrSrc = header.SourceAddress.To16()
-		addrDst = header.DestinationAddress.To16()
+		sourceIP, destIP, _ := header.IPs()
+		addrSrc = sourceIP.To16()
+		addrDst = destIP.To16()
 	} else if header.TransportProtocol.IsUnix() {
 		buf.Write(lengthUnixBytes)
-		// TODO is below right?
-		addrSrc = []byte(header.SourceAddress.String())
-		addrDst = []byte(header.DestinationAddress.String())
+		sourceAddr, destAddr, ok := header.UnixAddrs()
+		if !ok {
+			return nil, ErrInvalidAddress
+		}
+		addrSrc = []byte(sourceAddr.Name)
+		addrDst = []byte(destAddr.Name)
+	}
+	if addrSrc == nil || addrDst == nil {
+		return nil, ErrInvalidAddress
 	}
 	buf.Write(addrSrc)
 	buf.Write(addrDst)
 
-	portSrcBytes := func() []byte {
-		a := make([]byte, 2)
-		binary.BigEndian.PutUint16(a, header.SourcePort)
-		return a
-	}()
-	buf.Write(portSrcBytes)
+	if sourcePort, destPort, ok := header.Ports(); ok {
+		portBytes := make([]byte, 2)
 
-	portDstBytes := func() []byte {
-		a := make([]byte, 2)
-		binary.BigEndian.PutUint16(a, header.DestinationPort)
-		return a
-	}()
-	buf.Write(portDstBytes)
+		binary.BigEndian.PutUint16(portBytes, uint16(sourcePort))
+		buf.Write(portBytes)
+
+		binary.BigEndian.PutUint16(portBytes, uint16(destPort))
+		buf.Write(portBytes)
+	}
+
 	if len(header.rawTLVs) > 0 {
 		buf.Write(header.rawTLVs)
 	}
@@ -220,4 +222,14 @@ func addTLVLen(cur []byte, tlvLen int) ([]byte, error) {
 	a := make([]byte, 2)
 	binary.BigEndian.PutUint16(a, uint16(newLen))
 	return a, nil
+}
+
+func newIPAddr(transport AddressFamilyAndProtocol, ip net.IP, port uint16) net.Addr {
+	if transport.IsStream() {
+		return &net.TCPAddr{IP: ip, Port: int(port)}
+	} else if transport.IsDatagram() {
+		return &net.UDPAddr{IP: ip, Port: int(port)}
+	} else {
+		return nil
+	}
 }

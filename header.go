@@ -33,14 +33,12 @@ var (
 
 // Header is the placeholder for proxy protocol header.
 type Header struct {
-	Version            byte
-	Command            ProtocolVersionAndCommand
-	TransportProtocol  AddressFamilyAndProtocol
-	SourceAddress      net.IP
-	DestinationAddress net.IP
-	SourcePort         uint16
-	DestinationPort    uint16
-	rawTLVs            []byte
+	Version           byte
+	Command           ProtocolVersionAndCommand
+	TransportProtocol AddressFamilyAndProtocol
+	SourceAddr        net.Addr
+	DestinationAddr   net.Addr
+	rawTLVs           []byte
 }
 
 // HeaderProxyFromAddrs creates a new PROXY header from a source and a
@@ -60,40 +58,25 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 	}
 	switch sourceAddr := sourceAddr.(type) {
 	case *net.TCPAddr:
-		destAddr, ok := destAddr.(*net.TCPAddr)
-		if !ok {
+		if _, ok := destAddr.(*net.TCPAddr); !ok {
 			break
 		}
 		if len(sourceAddr.IP.To4()) == net.IPv4len {
 			h.TransportProtocol = TCPv4
 		} else if len(sourceAddr.IP) == net.IPv6len {
 			h.TransportProtocol = TCPv6
-		} else {
-			break
 		}
-		h.SourceAddress = sourceAddr.IP
-		h.DestinationAddress = destAddr.IP
-		h.SourcePort = uint16(sourceAddr.Port)
-		h.DestinationPort = uint16(destAddr.Port)
 	case *net.UDPAddr:
-		destAddr, ok := destAddr.(*net.UDPAddr)
-		if !ok {
+		if _, ok := destAddr.(*net.UDPAddr); !ok {
 			break
 		}
 		if len(sourceAddr.IP.To4()) == net.IPv4len {
 			h.TransportProtocol = UDPv4
 		} else if len(sourceAddr.IP) == net.IPv6len {
 			h.TransportProtocol = UDPv6
-		} else {
-			break
 		}
-		h.SourceAddress = sourceAddr.IP
-		h.DestinationAddress = destAddr.IP
-		h.SourcePort = uint16(sourceAddr.Port)
-		h.DestinationPort = uint16(destAddr.Port)
 	case *net.UnixAddr:
-		_, ok := destAddr.(*net.UnixAddr)
-		if !ok {
+		if _, ok := destAddr.(*net.UnixAddr); !ok {
 			break
 		}
 		switch sourceAddr.Net {
@@ -103,22 +86,57 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 			h.TransportProtocol = UnixDatagram
 		}
 	}
+	if h.TransportProtocol != UNSPEC {
+		h.SourceAddr = sourceAddr
+		h.DestinationAddr = destAddr
+	}
 	return h
 }
 
-// RemoteAddr returns the address of the remote endpoint of the connection.
-func (header *Header) RemoteAddr() net.Addr {
-	return &net.TCPAddr{
-		IP:   header.SourceAddress,
-		Port: int(header.SourcePort),
+func (header *Header) TCPAddrs() (sourceAddr, destAddr *net.TCPAddr, ok bool) {
+	if !header.TransportProtocol.IsStream() {
+		return nil, nil, false
+	}
+	sourceAddr, sourceOK := header.SourceAddr.(*net.TCPAddr)
+	destAddr, destOK := header.DestinationAddr.(*net.TCPAddr)
+	return sourceAddr, destAddr, sourceOK && destOK
+}
+
+func (header *Header) UDPAddrs() (sourceAddr, destAddr *net.UDPAddr, ok bool) {
+	if !header.TransportProtocol.IsDatagram() {
+		return nil, nil, false
+	}
+	sourceAddr, sourceOK := header.SourceAddr.(*net.UDPAddr)
+	destAddr, destOK := header.DestinationAddr.(*net.UDPAddr)
+	return sourceAddr, destAddr, sourceOK && destOK
+}
+
+func (header *Header) UnixAddrs() (sourceAddr, destAddr *net.UnixAddr, ok bool) {
+	if !header.TransportProtocol.IsUnix() {
+		return nil, nil, false
+	}
+	sourceAddr, sourceOK := header.SourceAddr.(*net.UnixAddr)
+	destAddr, destOK := header.DestinationAddr.(*net.UnixAddr)
+	return sourceAddr, destAddr, sourceOK && destOK
+}
+
+func (header *Header) IPs() (sourceIP, destIP net.IP, ok bool) {
+	if sourceAddr, destAddr, ok := header.TCPAddrs(); ok {
+		return sourceAddr.IP, destAddr.IP, true
+	} else if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
+		return sourceAddr.IP, destAddr.IP, true
+	} else {
+		return nil, nil, false
 	}
 }
 
-// LocalAddr returns the address of the local endpoint of the connection.
-func (header *Header) LocalAddr() net.Addr {
-	return &net.TCPAddr{
-		IP:   header.DestinationAddress,
-		Port: int(header.DestinationPort),
+func (header *Header) Ports() (sourcePort, destPort int, ok bool) {
+	if sourceAddr, destAddr, ok := header.TCPAddrs(); ok {
+		return sourceAddr.Port, destAddr.Port, true
+	} else if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
+		return sourceAddr.Port, destAddr.Port, true
+	} else {
+		return 0, 0, false
 	}
 }
 
@@ -140,12 +158,14 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 	if header.Version == 0x02 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
 		return false
 	}
-	return header.Version == otherHeader.Version &&
-		header.TransportProtocol == otherHeader.TransportProtocol &&
-		header.SourceAddress.String() == otherHeader.SourceAddress.String() &&
-		header.DestinationAddress.String() == otherHeader.DestinationAddress.String() &&
-		header.SourcePort == otherHeader.SourcePort &&
-		header.DestinationPort == otherHeader.DestinationPort
+	if header.Version != otherHeader.Version || header.TransportProtocol != otherHeader.TransportProtocol {
+		return false
+	}
+	if header.TransportProtocol == UNSPEC {
+		return true
+	}
+	return header.SourceAddr.String() == otherHeader.SourceAddr.String() &&
+		header.DestinationAddr.String() == otherHeader.DestinationAddr.String()
 }
 
 // WriteTo renders a proxy protocol header in a format and writes it to an io.Writer.

@@ -129,7 +129,7 @@ func (p *Conn) LocalAddr() net.Addr {
 		return p.conn.LocalAddr()
 	}
 
-	return p.header.LocalAddr()
+	return p.header.DestinationAddr
 }
 
 // RemoteAddr returns the address of the client if the proxy
@@ -144,7 +144,7 @@ func (p *Conn) RemoteAddr() net.Addr {
 		return p.conn.RemoteAddr()
 	}
 
-	return p.header.RemoteAddr()
+	return p.header.SourceAddr
 }
 
 // SetDeadline wraps original conn.SetDeadline
