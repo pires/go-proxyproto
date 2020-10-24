@@ -44,9 +44,8 @@ type PP2Type byte
 
 // TLV is a uninterpreted Type-Length-Value for V2 protocol, see section 2.2
 type TLV struct {
-	Type   PP2Type
-	Length int
-	Value  []byte
+	Type  PP2Type
+	Value []byte
 }
 
 // SplitTLVs splits the Type-Length-Value vector, returns the vector or an error.
@@ -59,17 +58,17 @@ func SplitTLVs(raw []byte) ([]TLV, error) {
 		if len(raw)-i <= 3 {
 			return nil, ErrTruncatedTLV
 		}
-		tlv.Length = int(binary.BigEndian.Uint16(raw[i+1 : i+3])) // Max length = 65K
+		tlvLen := int(binary.BigEndian.Uint16(raw[i+1 : i+3])) // Max length = 65K
 		i += 3
-		if i+tlv.Length > len(raw) {
+		if i+tlvLen > len(raw) {
 			return nil, ErrTruncatedTLV
 		}
 		// Ignore no-op padding
 		if tlv.Type != PP2_TYPE_NOOP {
-			tlv.Value = make([]byte, tlv.Length)
-			copy(tlv.Value, raw[i:i+tlv.Length])
+			tlv.Value = make([]byte, tlvLen)
+			copy(tlv.Value, raw[i:i+tlvLen])
 		}
-		i += tlv.Length
+		i += tlvLen
 		tlvs = append(tlvs, tlv)
 	}
 	return tlvs, nil
@@ -79,14 +78,11 @@ func SplitTLVs(raw []byte) ([]TLV, error) {
 func JoinTLVs(tlvs []TLV) ([]byte, error) {
 	var raw []byte
 	for _, tlv := range tlvs {
-		if tlv.Length > math.MaxUint16 {
-			return nil, fmt.Errorf("proxyproto: cannot format TLV %v with length %d", tlv.Type, tlv.Length)
-		}
-		if tlv.Length != len(tlv.Value) {
-			return nil, fmt.Errorf("proxyproto: TLV %v length doesn't match value length", tlv.Type)
+		if len(tlv.Value) > math.MaxUint16 {
+			return nil, fmt.Errorf("proxyproto: cannot format TLV %v with length %d", tlv.Type, len(tlv.Value))
 		}
 		var length [2]byte
-		binary.BigEndian.PutUint16(length[:], uint16(tlv.Length))
+		binary.BigEndian.PutUint16(length[:], uint16(len(tlv.Value)))
 		raw = append(raw, byte(tlv.Type))
 		raw = append(raw, length[:]...)
 		raw = append(raw, tlv.Value...)

@@ -131,18 +131,16 @@ func TestJoinTLVs(t *testing.T) {
 			name: "authority TLV",
 			raw:  append([]byte{byte(PP2_TYPE_AUTHORITY), 0x00, 0x0B}, []byte("example.org")...),
 			tlvs: []TLV{{
-				Type:   PP2_TYPE_AUTHORITY,
-				Length: 11,
-				Value:  []byte("example.org"),
+				Type:  PP2_TYPE_AUTHORITY,
+				Value: []byte("example.org"),
 			}},
 		},
 		{
 			name: "empty TLV",
 			raw:  []byte{byte(PP2_TYPE_NOOP), 0x00, 0x00},
 			tlvs: []TLV{{
-				Type:   PP2_TYPE_NOOP,
-				Length: 0,
-				Value:  nil,
+				Type:  PP2_TYPE_NOOP,
+				Value: nil,
 			}},
 		},
 	}

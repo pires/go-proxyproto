@@ -203,13 +203,12 @@ func TestSetTLVs(t *testing.T) {
 				DestinationPort:    2000,
 			},
 			tlvs: []TLV{{
-				Type:   PP2_TYPE_AUTHORITY,
-				Length: 11,
-				Value:  []byte("example.org"),
+				Type:  PP2_TYPE_AUTHORITY,
+				Value: []byte("example.org"),
 			}},
 		},
 		{
-			name: "add wrong length",
+			name: "add too long TLV",
 			header: &Header{
 				Version:            1,
 				Command:            PROXY,
@@ -220,9 +219,8 @@ func TestSetTLVs(t *testing.T) {
 				DestinationPort:    2000,
 			},
 			tlvs: []TLV{{
-				Type:   PP2_TYPE_AUTHORITY,
-				Length: 1,
-				Value:  []byte("example.org"),
+				Type:  PP2_TYPE_AUTHORITY,
+				Value: append(bytes.Repeat([]byte("a"), 0xFFFF), []byte(".example.org")...),
 			}},
 			expectErr: true,
 		},
