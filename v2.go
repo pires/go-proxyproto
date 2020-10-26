@@ -12,7 +12,7 @@ import (
 var (
 	lengthV4   = uint16(12)
 	lengthV6   = uint16(36)
-	lengthUnix = uint16(218)
+	lengthUnix = uint16(216)
 
 	lengthV4Bytes = func() []byte {
 		a := make([]byte, 2)
@@ -117,21 +117,26 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		}
 		header.SourceAddr = newIPAddr(header.TransportProtocol, addr.Src[:], addr.SrcPort)
 		header.DestinationAddr = newIPAddr(header.TransportProtocol, addr.Dst[:], addr.DstPort)
+	} else if header.TransportProtocol.IsUnix() {
+		var addr _addrUnix
+		if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
+			return nil, ErrInvalidAddress
+		}
+
+		network := "unix"
+		if header.TransportProtocol.IsDatagram() {
+			network = "unixgram"
+		}
+
+		header.SourceAddr = &net.UnixAddr{
+			Net:  network,
+			Name: parseUnixName(addr.Src[:]),
+		}
+		header.DestinationAddr = &net.UnixAddr{
+			Net:  network,
+			Name: parseUnixName(addr.Dst[:]),
+		}
 	}
-	// TODO fully support Unix addresses
-	//	else if header.TransportProtocol.IsUnix() {
-	//		var addr _addrUnix
-	//		if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
-	//			return nil, ErrInvalidAddress
-	//		}
-	//
-	//if header.SourceAddress, err = net.ResolveUnixAddr("unix", string(addr.Src[:])); err != nil {
-	//	return nil, ErrCantResolveSourceUnixAddress
-	//}
-	//if header.DestinationAddress, err = net.ResolveUnixAddr("unix", string(addr.Dst[:])); err != nil {
-	//	return nil, ErrCantResolveDestinationUnixAddress
-	//}
-	//}
 
 	// Copy bytes for optional Type-Length-Value vector
 	header.rawTLVs = make([]byte, payloadReader.N) // Allocate minimum size slice
@@ -172,8 +177,8 @@ func (header *Header) formatVersion2() ([]byte, error) {
 		if !ok {
 			return nil, ErrInvalidAddress
 		}
-		addrSrc = []byte(sourceAddr.Name)
-		addrDst = []byte(destAddr.Name)
+		addrSrc = formatUnixName(sourceAddr.Name)
+		addrDst = formatUnixName(destAddr.Name)
 	}
 	if addrSrc == nil || addrDst == nil {
 		return nil, ErrInvalidAddress
@@ -232,4 +237,21 @@ func newIPAddr(transport AddressFamilyAndProtocol, ip net.IP, port uint16) net.A
 	} else {
 		return nil
 	}
+}
+
+func parseUnixName(b []byte) string {
+	i := bytes.IndexByte(b, 0)
+	if i < 0 {
+		return string(b)
+	}
+	return string(b[:i])
+}
+
+func formatUnixName(name string) []byte {
+	n := int(lengthUnix) / 2
+	if len(name) >= n {
+		return []byte(name[:n])
+	}
+	pad := make([]byte, n-len(name))
+	return append([]byte(name), pad...)
 }

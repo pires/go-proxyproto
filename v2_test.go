@@ -33,6 +33,8 @@ var (
 		return a
 	}()
 
+	unixBytes = pad([]byte("socket"), 108)
+
 	// Tests don't care if source and destination addresses and ports are the same
 	addressesIPv4 = append(v4ip.To4(), v4ip.To4()...)
 	addressesIPv6 = append(v6ip.To16(), v6ip.To16()...)
@@ -45,6 +47,8 @@ var (
 	fixtureIPv6Address  = append(addressesIPv6, ports...)
 	fixtureIPv6V2       = append(lengthV6Bytes, fixtureIPv6Address...)
 	fixtureIPv6V2Padded = append(append(lengthPaddedBytes, fixtureIPv6Address...), make([]byte, lengthPadded-lengthV6)...)
+	fixtureUnixAddress  = append(unixBytes, unixBytes...)
+	fixtureUnixV2       = append(lengthUnixBytes, fixtureUnixAddress...)
 	fixtureTLV          = func() []byte {
 		tlv := make([]byte, 2+rand.Intn(1<<12)) // Not enough to overflow, at least size two
 		rand.Read(tlv)
@@ -56,6 +60,11 @@ var (
 	// Arbitrary bytes following proxy bytes
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
 )
+
+func pad(b []byte, n int) []byte {
+	padding := make([]byte, n-len(b))
+	return append(b, padding...)
+}
 
 var invalidParseV2Tests = []struct {
 	reader        *bufio.Reader
@@ -202,7 +211,28 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   v6UDPAddr,
 		},
 	},
-	// TODO add tests for Unix stream and datagram
+	// PROXY UNIX STREAM
+	{
+		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixStream)), fixtureUnixV2...)),
+		&Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UnixStream,
+			SourceAddr:        unixStreamAddr,
+			DestinationAddr:   unixStreamAddr,
+		},
+	},
+	// PROXY UNIX DATAGRAM
+	{
+		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixDatagram)), fixtureUnixV2...)),
+		&Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UnixDatagram,
+			SourceAddr:        unixDatagramAddr,
+			DestinationAddr:   unixDatagramAddr,
+		},
+	},
 }
 
 func TestParseV2Valid(t *testing.T) {

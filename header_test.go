@@ -30,6 +30,9 @@ var (
 	v4UDPAddr net.Addr = &net.UDPAddr{IP: v4ip, Port: PORT}
 	v6UDPAddr net.Addr = &net.UDPAddr{IP: v6ip, Port: PORT}
 
+	unixStreamAddr   net.Addr = &net.UnixAddr{Net: "unix", Name: "socket"}
+	unixDatagramAddr net.Addr = &net.UnixAddr{Net: "unixgram", Name: "socket"}
+
 	errReadIntentionallyBroken = errors.New("read is intentionally broken")
 )
 
