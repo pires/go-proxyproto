@@ -447,27 +447,90 @@ func TestFormat(t *testing.T) {
 	if _, err := validHeader.Format(); err != nil {
 		t.Fatalf("shouldn't have thrown error %q", err.Error())
 	}
+}
 
-	invalidHeader := &Header{
-		Version:           3,
-		Command:           PROXY,
-		TransportProtocol: TCPv4,
-		SourceAddr: &net.TCPAddr{
-			IP:   net.ParseIP("10.1.1.1"),
-			Port: 1000,
+func TestFormatInvalid(t *testing.T) {
+	tests := []struct {
+		name   string
+		header *Header
+		err    error
+	}{
+		{
+			name: "invalidVersion",
+			header: &Header{
+				Version:           3,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr:        v4addr,
+				DestinationAddr:   v4addr,
+			},
+			err: ErrUnknownProxyProtocolVersion,
 		},
-		DestinationAddr: &net.TCPAddr{
-			IP:   net.ParseIP("20.2.2.2"),
-			Port: 2000,
+		{
+			name: "v2MismatchTCPv4_UDPv4",
+			header: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr:        v4UDPAddr,
+				DestinationAddr:   v4addr,
+			},
+			err: ErrInvalidAddress,
+		},
+		{
+			name: "v2MismatchTCPv4_TCPv6",
+			header: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr:        v4addr,
+				DestinationAddr:   v6addr,
+			},
+			err: ErrInvalidAddress,
+		},
+		{
+			name: "v2MismatchUnixStream_TCPv4",
+			header: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: UnixStream,
+				SourceAddr:        v4addr,
+				DestinationAddr:   unixStreamAddr,
+			},
+			err: ErrInvalidAddress,
+		},
+		{
+			name: "v1MismatchTCPv4_TCPv6",
+			header: &Header{
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr:        v6addr,
+				DestinationAddr:   v4addr,
+			},
+			err: ErrInvalidAddress,
+		},
+		{
+			name: "v1MismatchTCPv4_UDPv4",
+			header: &Header{
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr:        v4UDPAddr,
+				DestinationAddr:   v4addr,
+			},
+			err: ErrInvalidAddress,
 		},
 	}
 
-	if _, err := invalidHeader.Format(); err == nil {
-		t.Fatalf("should have thrown error %q", err.Error())
-	} else {
-		if err != ErrUnknownProxyProtocolVersion {
-			t.Fatalf("expected %q, actual %q", ErrUnknownProxyProtocolVersion.Error(), err.Error())
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := test.header.Format(); err == nil {
+				t.Errorf("Header.Format() succeeded, want an error")
+			} else if err != test.err {
+				t.Errorf("Header.Format() = %q, want %q", err, test.err)
+			}
+		})
 	}
 }
 
