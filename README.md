@@ -60,10 +60,14 @@ func main() {
 		Version:            1,
 		Command:            proxyproto.PROXY,
 		TransportProtocol:  proxyproto.TCPv4,
-		SourceAddress:      net.ParseIP("10.1.1.1"),
-		SourcePort:         1000,
-		DestinationAddress: net.ParseIP("20.2.2.2"),
-		DestinationPort:    2000,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("10.1.1.1"),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("20.2.2.2"),
+			Port: 2000,
+		},
 	}
 	// After the connection was created write the proxy headers first
 	_, err = header.WriteTo(conn)

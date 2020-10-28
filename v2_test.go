@@ -33,9 +33,11 @@ var (
 		return a
 	}()
 
+	unixBytes = pad([]byte("socket"), 108)
+
 	// Tests don't care if source and destination addresses and ports are the same
-	addressesIPv4 = append(v4addr.To4(), v4addr.To4()...)
-	addressesIPv6 = append(v6addr.To16(), v6addr.To16()...)
+	addressesIPv4 = append(v4ip.To4(), v4ip.To4()...)
+	addressesIPv6 = append(v6ip.To16(), v6ip.To16()...)
 	ports         = append(portBytes, portBytes...)
 
 	// Fixtures to use in tests
@@ -45,6 +47,8 @@ var (
 	fixtureIPv6Address  = append(addressesIPv6, ports...)
 	fixtureIPv6V2       = append(lengthV6Bytes, fixtureIPv6Address...)
 	fixtureIPv6V2Padded = append(append(lengthPaddedBytes, fixtureIPv6Address...), make([]byte, lengthPadded-lengthV6)...)
+	fixtureUnixAddress  = append(unixBytes, unixBytes...)
+	fixtureUnixV2       = append(lengthUnixBytes, fixtureUnixAddress...)
 	fixtureTLV          = func() []byte {
 		tlv := make([]byte, 2+rand.Intn(1<<12)) // Not enough to overflow, at least size two
 		rand.Read(tlv)
@@ -56,6 +60,11 @@ var (
 	// Arbitrary bytes following proxy bytes
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
 )
+
+func pad(b []byte, n int) []byte {
+	padding := make([]byte, n-len(b))
+	return append(b, padding...)
+}
 
 var invalidParseV2Tests = []struct {
 	reader        *bufio.Reader
@@ -127,96 +136,103 @@ var validParseAndWriteV2Tests = []struct {
 	{
 		newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), fixtureIPv4V2...)),
 		&Header{
-			Version:            2,
-			Command:            LOCAL,
-			TransportProtocol:  TCPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			Version:           2,
+			Command:           LOCAL,
+			TransportProtocol: TCPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
 		},
 	},
 	// PROXY TCP IPv4
 	{
 		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2...)),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
 		},
 	},
 	// PROXY TCP IPv6
 	{
 		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2...)),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        v6addr,
+			DestinationAddr:   v6addr,
 		},
 	},
 	// PROXY TCP IPv4 with TLV
 	{
 		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2TLV...)),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
-			rawTLVs:            fixtureTLV,
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
+			rawTLVs:           fixtureTLV,
 		},
 	},
 	// PROXY TCP IPv6 with TLV
 	{
 		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2TLV...)),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
-			rawTLVs:            fixtureTLV,
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        v6addr,
+			DestinationAddr:   v6addr,
+			rawTLVs:           fixtureTLV,
 		},
 	},
 	// PROXY UDP IPv4
 	{
 		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2...)),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  UDPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UDPv4,
+			SourceAddr:        v4UDPAddr,
+			DestinationAddr:   v4UDPAddr,
 		},
 	},
 	// PROXY UDP IPv6
 	{
 		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2...)),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  UDPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UDPv6,
+			SourceAddr:        v6UDPAddr,
+			DestinationAddr:   v6UDPAddr,
 		},
 	},
-	// TODO add tests for Unix stream and datagram
+	// PROXY UNIX STREAM
+	{
+		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixStream)), fixtureUnixV2...)),
+		&Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UnixStream,
+			SourceAddr:        unixStreamAddr,
+			DestinationAddr:   unixStreamAddr,
+		},
+	},
+	// PROXY UNIX DATAGRAM
+	{
+		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixDatagram)), fixtureUnixV2...)),
+		&Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UnixDatagram,
+			SourceAddr:        unixDatagramAddr,
+			DestinationAddr:   unixDatagramAddr,
+		},
+	},
 }
 
 func TestParseV2Valid(t *testing.T) {
@@ -261,56 +277,48 @@ var validParseV2PaddedTests = []struct {
 	{
 		append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2Padded...),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
-			rawTLVs:            make([]byte, lengthPadded-lengthV4),
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
+			rawTLVs:           make([]byte, lengthPadded-lengthV4),
 		},
 	},
 	// PROXY TCP IPv6
 	{
 		append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2Padded...),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  TCPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
-			rawTLVs:            make([]byte, lengthPadded-lengthV6),
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        v6addr,
+			DestinationAddr:   v6addr,
+			rawTLVs:           make([]byte, lengthPadded-lengthV6),
 		},
 	},
 	// PROXY UDP IPv4
 	{
 		append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2Padded...),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  UDPv4,
-			SourceAddress:      v4addr,
-			DestinationAddress: v4addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
-			rawTLVs:            make([]byte, lengthPadded-lengthV4),
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UDPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
+			rawTLVs:           make([]byte, lengthPadded-lengthV4),
 		},
 	},
 	// PROXY UDP IPv6
 	{
 		append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2Padded...),
 		&Header{
-			Version:            2,
-			Command:            PROXY,
-			TransportProtocol:  UDPv6,
-			SourceAddress:      v6addr,
-			DestinationAddress: v6addr,
-			SourcePort:         PORT,
-			DestinationPort:    PORT,
-			rawTLVs:            make([]byte, lengthPadded-lengthV6),
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UDPv6,
+			SourceAddr:        v6addr,
+			DestinationAddr:   v6addr,
+			rawTLVs:           make([]byte, lengthPadded-lengthV6),
 		},
 	},
 }
@@ -340,13 +348,11 @@ func TestParseV2Padded(t *testing.T) {
 
 func TestV2EqualsToTLV(t *testing.T) {
 	eHdr := &Header{
-		Version:            2,
-		Command:            PROXY,
-		TransportProtocol:  TCPv4,
-		SourceAddress:      v4addr,
-		DestinationAddress: v4addr,
-		SourcePort:         PORT,
-		DestinationPort:    PORT,
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr:        v4addr,
+		DestinationAddr:   v4addr,
 	}
 	hdr, err := Read(newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2TLV...)))
 	if err != nil {
@@ -370,47 +376,39 @@ func TestV2EqualsToTLV(t *testing.T) {
 var tlvFormatTests = []*Header{
 	// PROXY TCP IPv4
 	&Header{
-		Version:            2,
-		Command:            PROXY,
-		TransportProtocol:  TCPv4,
-		SourceAddress:      v4addr,
-		DestinationAddress: v4addr,
-		SourcePort:         PORT,
-		DestinationPort:    PORT,
-		rawTLVs:            make([]byte, 1<<16),
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr:        v4addr,
+		DestinationAddr:   v4addr,
+		rawTLVs:           make([]byte, 1<<16),
 	},
 	// PROXY TCP IPv6
 	&Header{
-		Version:            2,
-		Command:            PROXY,
-		TransportProtocol:  TCPv6,
-		SourceAddress:      v6addr,
-		DestinationAddress: v6addr,
-		SourcePort:         PORT,
-		DestinationPort:    PORT,
-		rawTLVs:            make([]byte, 1<<16),
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: TCPv6,
+		SourceAddr:        v6addr,
+		DestinationAddr:   v6addr,
+		rawTLVs:           make([]byte, 1<<16),
 	},
 	// PROXY UDP IPv4
 	&Header{
-		Version:            2,
-		Command:            PROXY,
-		TransportProtocol:  UDPv4,
-		SourceAddress:      v4addr,
-		DestinationAddress: v4addr,
-		SourcePort:         PORT,
-		DestinationPort:    PORT,
-		rawTLVs:            make([]byte, 1<<16),
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: UDPv4,
+		SourceAddr:        v4addr,
+		DestinationAddr:   v4addr,
+		rawTLVs:           make([]byte, 1<<16),
 	},
 	// PROXY UDP IPv6
 	&Header{
-		Version:            2,
-		Command:            PROXY,
-		TransportProtocol:  UDPv6,
-		SourceAddress:      v6addr,
-		DestinationAddress: v6addr,
-		SourcePort:         PORT,
-		DestinationPort:    PORT,
-		rawTLVs:            make([]byte, 1<<16),
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: UDPv6,
+		SourceAddr:        v6addr,
+		DestinationAddr:   v6addr,
+		rawTLVs:           make([]byte, 1<<16),
 	},
 }
 

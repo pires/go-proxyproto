@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -20,8 +21,17 @@ const (
 )
 
 var (
-	v4addr = net.ParseIP(IP4_ADDR).To4()
-	v6addr = net.ParseIP(IP6_ADDR).To16()
+	v4ip = net.ParseIP(IP4_ADDR).To4()
+	v6ip = net.ParseIP(IP6_ADDR).To16()
+
+	v4addr net.Addr = &net.TCPAddr{IP: v4ip, Port: PORT}
+	v6addr net.Addr = &net.TCPAddr{IP: v6ip, Port: PORT}
+
+	v4UDPAddr net.Addr = &net.UDPAddr{IP: v4ip, Port: PORT}
+	v6UDPAddr net.Addr = &net.UDPAddr{IP: v6ip, Port: PORT}
+
+	unixStreamAddr   net.Addr = &net.UnixAddr{Net: "unix", Name: "socket"}
+	unixDatagramAddr net.Addr = &net.UnixAddr{Net: "unixgram", Name: "socket"}
 
 	errReadIntentionallyBroken = errors.New("read is intentionally broken")
 )
@@ -69,56 +79,76 @@ func TestEqualsTo(t *testing.T) {
 	}{
 		{
 			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 			nil,
 			false,
 		},
 		{
 			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 			&Header{
-				Version:            2,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 			false,
 		},
 		{
 			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 			true,
 		},
@@ -136,51 +166,172 @@ func TestEqualTo(t *testing.T) {
 	TestEqualsTo(t)
 }
 
-func TestLocalAddr(t *testing.T) {
-	var headers = []struct {
-		header       *Header
-		expectedAddr net.Addr
-		expected     bool
+func TestGetters(t *testing.T) {
+	var tests = []struct {
+		name                         string
+		header                       *Header
+		tcpSourceAddr, tcpDestAddr   *net.TCPAddr
+		udpSourceAddr, udpDestAddr   *net.UDPAddr
+		unixSourceAddr, unixDestAddr *net.UnixAddr
+		ipSource, ipDest             net.IP
+		portSource, portDest         int
 	}{
 		{
-			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+			name: "TCPv4",
+			header: &Header{
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
-			&net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
-				Port: 2000,
-			},
-			true,
-		},
-		{
-			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
-			},
-			&net.TCPAddr{
+			tcpSourceAddr: &net.TCPAddr{
 				IP:   net.ParseIP("10.1.1.1"),
 				Port: 1000,
 			},
-			false,
+			tcpDestAddr: &net.TCPAddr{
+				IP:   net.ParseIP("20.2.2.2"),
+				Port: 2000,
+			},
+			ipSource:   net.ParseIP("10.1.1.1"),
+			ipDest:     net.ParseIP("20.2.2.2"),
+			portSource: 1000,
+			portDest:   2000,
+		},
+		{
+			name: "UDPv4",
+			header: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: UDPv6,
+				SourceAddr: &net.UDPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.UDPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
+			},
+			udpSourceAddr: &net.UDPAddr{
+				IP:   net.ParseIP("10.1.1.1"),
+				Port: 1000,
+			},
+			udpDestAddr: &net.UDPAddr{
+				IP:   net.ParseIP("20.2.2.2"),
+				Port: 2000,
+			},
+			ipSource:   net.ParseIP("10.1.1.1"),
+			ipDest:     net.ParseIP("20.2.2.2"),
+			portSource: 1000,
+			portDest:   2000,
+		},
+		{
+			name: "UnixStream",
+			header: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: UnixStream,
+				SourceAddr: &net.UnixAddr{
+					Net:  "unix",
+					Name: "src",
+				},
+				DestinationAddr: &net.UnixAddr{
+					Net:  "unix",
+					Name: "dst",
+				},
+			},
+			unixSourceAddr: &net.UnixAddr{
+				Net:  "unix",
+				Name: "src",
+			},
+			unixDestAddr: &net.UnixAddr{
+				Net:  "unix",
+				Name: "dst",
+			},
+		},
+		{
+			name: "UnixDatagram",
+			header: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: UnixDatagram,
+				SourceAddr: &net.UnixAddr{
+					Net:  "unix",
+					Name: "src",
+				},
+				DestinationAddr: &net.UnixAddr{
+					Net:  "unix",
+					Name: "dst",
+				},
+			},
+			unixSourceAddr: &net.UnixAddr{
+				Net:  "unix",
+				Name: "src",
+			},
+			unixDestAddr: &net.UnixAddr{
+				Net:  "unix",
+				Name: "dst",
+			},
+		},
+		{
+			name: "Unspec",
+			header: &Header{
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: UNSPEC,
+			},
 		},
 	}
 
-	for _, tt := range headers {
-		actualAddr := tt.header.LocalAddr()
-		if actual := actualAddr.String() == tt.expectedAddr.String(); actual != tt.expected {
-			t.Fatalf("expected %t, actual %t for expectedAddr %+v and actualAddr %+v", tt.expected, actual, tt.expectedAddr, actualAddr)
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tcpSourceAddr, tcpDestAddr, _ := test.header.TCPAddrs()
+			if test.tcpSourceAddr != nil && !reflect.DeepEqual(tcpSourceAddr, test.tcpSourceAddr) {
+				t.Errorf("TCPAddrs() source = %v, want %v", tcpSourceAddr, test.tcpSourceAddr)
+			}
+			if test.tcpDestAddr != nil && !reflect.DeepEqual(tcpDestAddr, test.tcpDestAddr) {
+				t.Errorf("TCPAddrs() dest = %v, want %v", tcpDestAddr, test.tcpDestAddr)
+			}
+
+			udpSourceAddr, udpDestAddr, _ := test.header.UDPAddrs()
+			if test.udpSourceAddr != nil && !reflect.DeepEqual(udpSourceAddr, test.udpSourceAddr) {
+				t.Errorf("TCPAddrs() source = %v, want %v", udpSourceAddr, test.udpSourceAddr)
+			}
+			if test.udpDestAddr != nil && !reflect.DeepEqual(udpDestAddr, test.udpDestAddr) {
+				t.Errorf("TCPAddrs() dest = %v, want %v", udpDestAddr, test.udpDestAddr)
+			}
+
+			unixSourceAddr, unixDestAddr, _ := test.header.UnixAddrs()
+			if test.unixSourceAddr != nil && !reflect.DeepEqual(unixSourceAddr, test.unixSourceAddr) {
+				t.Errorf("UnixAddrs() source = %v, want %v", unixSourceAddr, test.unixSourceAddr)
+			}
+			if test.unixDestAddr != nil && !reflect.DeepEqual(unixDestAddr, test.unixDestAddr) {
+				t.Errorf("UnixAddrs() dest = %v, want %v", unixDestAddr, test.unixDestAddr)
+			}
+
+			ipSource, ipDest, _ := test.header.IPs()
+			if test.ipSource != nil && !ipSource.Equal(test.ipSource) {
+				t.Errorf("IPs() source = %v, want %v", ipSource, test.ipSource)
+			}
+			if test.ipDest != nil && !ipDest.Equal(test.ipDest) {
+				t.Errorf("IPs() dest = %v, want %v", ipDest, test.ipDest)
+			}
+
+			portSource, portDest, _ := test.header.Ports()
+			if test.portSource != 0 && portSource != test.portSource {
+				t.Errorf("Ports() source = %v, want %v", portSource, test.portSource)
+			}
+			if test.portDest != 0 && portDest != test.portDest {
+				t.Errorf("Ports() dest = %v, want %v", portDest, test.portDest)
+			}
+		})
 	}
 }
 
@@ -194,13 +345,17 @@ func TestSetTLVs(t *testing.T) {
 		{
 			name: "add authority TLV",
 			header: &Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 			tlvs: []TLV{{
 				Type:  PP2_TYPE_AUTHORITY,
@@ -210,13 +365,17 @@ func TestSetTLVs(t *testing.T) {
 		{
 			name: "add too long TLV",
 			header: &Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 			tlvs: []TLV{{
 				Type:  PP2_TYPE_AUTHORITY,
@@ -233,65 +392,21 @@ func TestSetTLVs(t *testing.T) {
 	}
 }
 
-func TestRemoteAddr(t *testing.T) {
-	var headers = []struct {
-		header       *Header
-		expectedAddr net.Addr
-		expected     bool
-	}{
-		{
-			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
-			},
-			&net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
-				Port: 2000,
-			},
-			true,
-		},
-		{
-			&Header{
-				Version:            1,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
-			},
-			&net.TCPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
-				Port: 1000,
-			},
-			false,
-		},
-	}
-
-	for _, tt := range headers {
-		actualAddr := tt.header.LocalAddr()
-		if actual := actualAddr.String() == tt.expectedAddr.String(); actual != tt.expected {
-			t.Fatalf("expected %t, actual %t for expectedAddr %+v and actualAddr %+v", tt.expected, actual, tt.expectedAddr, actualAddr)
-		}
-	}
-}
-
 func TestWriteTo(t *testing.T) {
 	var buf bytes.Buffer
 
 	validHeader := &Header{
-		Version:            1,
-		Command:            PROXY,
-		TransportProtocol:  TCPv4,
-		SourceAddress:      net.ParseIP("10.1.1.1"),
-		SourcePort:         1000,
-		DestinationAddress: net.ParseIP("20.2.2.2"),
-		DestinationPort:    2000,
+		Version:           1,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("10.1.1.1"),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("20.2.2.2"),
+			Port: 2000,
+		},
 	}
 
 	if _, err := validHeader.WriteTo(&buf); err != nil {
@@ -299,10 +414,14 @@ func TestWriteTo(t *testing.T) {
 	}
 
 	invalidHeader := &Header{
-		SourceAddress:      net.ParseIP("10.1.1.1"),
-		SourcePort:         1000,
-		DestinationAddress: net.ParseIP("20.2.2.2"),
-		DestinationPort:    2000,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("10.1.1.1"),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("20.2.2.2"),
+			Port: 2000,
+		},
 	}
 
 	if _, err := invalidHeader.WriteTo(&buf); err == nil {
@@ -312,13 +431,17 @@ func TestWriteTo(t *testing.T) {
 
 func TestFormat(t *testing.T) {
 	validHeader := &Header{
-		Version:            1,
-		Command:            PROXY,
-		TransportProtocol:  TCPv4,
-		SourceAddress:      net.ParseIP("10.1.1.1"),
-		SourcePort:         1000,
-		DestinationAddress: net.ParseIP("20.2.2.2"),
-		DestinationPort:    2000,
+		Version:           1,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("10.1.1.1"),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("20.2.2.2"),
+			Port: 2000,
+		},
 	}
 
 	if _, err := validHeader.Format(); err != nil {
@@ -326,13 +449,17 @@ func TestFormat(t *testing.T) {
 	}
 
 	invalidHeader := &Header{
-		Version:            3,
-		Command:            PROXY,
-		TransportProtocol:  TCPv4,
-		SourceAddress:      net.ParseIP("10.1.1.1"),
-		SourcePort:         1000,
-		DestinationAddress: net.ParseIP("20.2.2.2"),
-		DestinationPort:    2000,
+		Version:           3,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("10.1.1.1"),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("20.2.2.2"),
+			Port: 2000,
+		},
 	}
 
 	if _, err := invalidHeader.Format(); err == nil {
@@ -368,13 +495,17 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Port: 2000,
 			},
 			expected: &Header{
-				Version:            2,
-				Command:            PROXY,
-				TransportProtocol:  TCPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 		},
 		{
@@ -388,13 +519,17 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Port: 2000,
 			},
 			expected: &Header{
-				Version:            2,
-				Command:            PROXY,
-				TransportProtocol:  TCPv6,
-				SourceAddress:      net.ParseIP("fde7::372"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("fde7::1"),
-				DestinationPort:    2000,
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: TCPv6,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("fde7::372"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("fde7::1"),
+					Port: 2000,
+				},
 			},
 		},
 		{
@@ -408,13 +543,17 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Port: 2000,
 			},
 			expected: &Header{
-				Version:            2,
-				Command:            PROXY,
-				TransportProtocol:  UDPv4,
-				SourceAddress:      net.ParseIP("10.1.1.1"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("20.2.2.2"),
-				DestinationPort:    2000,
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: UDPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 		},
 		{
@@ -428,56 +567,90 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Port: 2000,
 			},
 			expected: &Header{
-				Version:            2,
-				Command:            PROXY,
-				TransportProtocol:  UDPv6,
-				SourceAddress:      net.ParseIP("fde7::372"),
-				SourcePort:         1000,
-				DestinationAddress: net.ParseIP("fde7::1"),
-				DestinationPort:    2000,
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: UDPv6,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("fde7::372"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("fde7::1"),
+					Port: 2000,
+				},
 			},
 		},
 		{
 			name: "UnixStream",
 			sourceAddr: &net.UnixAddr{
-				Net: "unix",
+				Net:  "unix",
+				Name: "src",
 			},
 			destAddr: &net.UnixAddr{
-				Net: "unix",
+				Net:  "unix",
+				Name: "dst",
 			},
 			expected: &Header{
 				Version:           2,
 				Command:           PROXY,
 				TransportProtocol: UnixStream,
+				SourceAddr: &net.UnixAddr{
+					Net:  "unix",
+					Name: "src",
+				},
+				DestinationAddr: &net.UnixAddr{
+					Net:  "unix",
+					Name: "dst",
+				},
 			},
 		},
 		{
 			name: "UnixDatagram",
 			sourceAddr: &net.UnixAddr{
-				Net: "unixgram",
+				Net:  "unixgram",
+				Name: "src",
 			},
 			destAddr: &net.UnixAddr{
-				Net: "unixgram",
+				Net:  "unixgram",
+				Name: "dst",
 			},
 			expected: &Header{
 				Version:           2,
 				Command:           PROXY,
 				TransportProtocol: UnixDatagram,
+				SourceAddr: &net.UnixAddr{
+					Net:  "unixgram",
+					Name: "src",
+				},
+				DestinationAddr: &net.UnixAddr{
+					Net:  "unixgram",
+					Name: "dst",
+				},
 			},
 		},
 		{
 			name:    "Version1",
 			version: 1,
-			sourceAddr: &net.UnixAddr{
-				Net: "unix",
+			sourceAddr: &net.TCPAddr{
+				IP:   net.ParseIP("10.1.1.1"),
+				Port: 1000,
 			},
-			destAddr: &net.UnixAddr{
-				Net: "unix",
+			destAddr: &net.TCPAddr{
+				IP:   net.ParseIP("20.2.2.2"),
+				Port: 2000,
 			},
 			expected: &Header{
 				Version:           1,
 				Command:           PROXY,
-				TransportProtocol: UnixStream,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
 			},
 		},
 		{
