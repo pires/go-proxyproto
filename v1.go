@@ -77,26 +77,43 @@ func (header *Header) formatVersion1() ([]byte, error) {
 	// As of version 1, only "TCP4" ( \x54 \x43 \x50 \x34 ) for TCP over IPv4,
 	// and "TCP6" ( \x54 \x43 \x50 \x36 ) for TCP over IPv6 are allowed.
 	var proto string
-	if header.TransportProtocol == TCPv4 {
+	switch header.TransportProtocol {
+	case TCPv4:
 		proto = "TCP4"
-	} else if header.TransportProtocol == TCPv6 {
+	case TCPv6:
 		proto = "TCP6"
-	} else {
+	default:
 		// Unknown connection (short form)
 		return []byte("PROXY UNKNOWN\r\n"), nil
 	}
 
-	sourceAddr := header.SourceAddr.(*net.TCPAddr)
-	destAddr := header.DestinationAddr.(*net.TCPAddr)
+	sourceAddr, sourceOK := header.SourceAddr.(*net.TCPAddr)
+	destAddr, destOK := header.DestinationAddr.(*net.TCPAddr)
+	if !sourceOK || !destOK {
+		return nil, ErrInvalidAddress
+	}
+
+	sourceIP, destIP := sourceAddr.IP, destAddr.IP
+	switch header.TransportProtocol {
+	case TCPv4:
+		sourceIP = sourceIP.To4()
+		destIP = destIP.To4()
+	case TCPv6:
+		sourceIP = sourceIP.To16()
+		destIP = destIP.To16()
+	}
+	if sourceIP == nil || destIP == nil {
+		return nil, ErrInvalidAddress
+	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, 108))
 	buf.Write(SIGV1)
 	buf.WriteString(separator)
 	buf.WriteString(proto)
 	buf.WriteString(separator)
-	buf.WriteString(sourceAddr.IP.String())
+	buf.WriteString(sourceIP.String())
 	buf.WriteString(separator)
-	buf.WriteString(destAddr.IP.String())
+	buf.WriteString(destIP.String())
 	buf.WriteString(separator)
 	buf.WriteString(strconv.Itoa(sourceAddr.Port))
 	buf.WriteString(separator)
