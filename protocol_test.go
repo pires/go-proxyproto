@@ -470,6 +470,46 @@ func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
 	}
 }
 
+func Test_ConnectionCasts(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
+
+	pl := &Listener{Listener: l, Policy: policyFunc}
+
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		defer conn.Close()
+		conn.Write([]byte("ping"))
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer conn.Close()
+
+	proxyprotoConn := conn.(*Conn)
+	_, ok := proxyprotoConn.TCPConn()
+	if !ok {
+		t.Fatal("err: should be a tcp connection")
+	}
+	_, ok = proxyprotoConn.UDPConn()
+	if ok {
+		t.Fatal("err: should be a tcp connection not udp")
+	}
+	_, ok = proxyprotoConn.UnixConn()
+	if ok {
+		t.Fatal("err: should be a tcp connection not unix")
+	}
+}
+
 func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

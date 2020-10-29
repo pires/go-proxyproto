@@ -147,6 +147,24 @@ func (p *Conn) RemoteAddr() net.Addr {
 	return p.header.SourceAddr
 }
 
+// TCPConn returns is the underlying connection as TCPConn
+func (p *Conn) TCPConn() (conn *net.TCPConn, ok bool) {
+	conn, ok = p.conn.(*net.TCPConn)
+	return
+}
+
+// UnixConn returns is the underlying connection as UnixConn
+func (p *Conn) UnixConn() (conn *net.UnixConn, ok bool) {
+	conn, ok = p.conn.(*net.UnixConn)
+	return
+}
+
+// UDPConn returns is the underlying connection as UDPConn
+func (p *Conn) UDPConn() (conn *net.UDPConn, ok bool) {
+	conn, ok = p.conn.(*net.UDPConn)
+	return
+}
+
 // SetDeadline wraps original conn.SetDeadline
 func (p *Conn) SetDeadline(t time.Time) error {
 	return p.conn.SetDeadline(t)
