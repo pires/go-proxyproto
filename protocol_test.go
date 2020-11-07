@@ -67,6 +67,19 @@ func TestParse_ipv4(t *testing.T) {
 
 	pl := &Listener{Listener: l}
 
+	header := &Header{
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("10.1.1.1"),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("20.2.2.2"),
+			Port: 2000,
+		},
+	}
 	go func() {
 		conn, err := net.Dial("tcp", pl.Addr().String())
 		if err != nil {
@@ -75,19 +88,6 @@ func TestParse_ipv4(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header := &Header{
-			Version:           2,
-			Command:           PROXY,
-			TransportProtocol: TCPv4,
-			SourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
-				Port: 1000,
-			},
-			DestinationAddr: &net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
-				Port: 2000,
-			},
-		}
 		header.WriteTo(conn)
 
 		conn.Write([]byte("ping"))
@@ -128,6 +128,11 @@ func TestParse_ipv4(t *testing.T) {
 	if addr.Port != 1000 {
 		t.Fatalf("bad: %v", addr)
 	}
+
+	h := conn.(*Conn).ProxyHeader()
+	if !h.EqualsTo(header) {
+		t.Errorf("bad: %v", h)
+	}
 }
 
 func TestParse_ipv6(t *testing.T) {
@@ -138,6 +143,20 @@ func TestParse_ipv6(t *testing.T) {
 
 	pl := &Listener{Listener: l}
 
+	header := &Header{
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: TCPv6,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("ffff::ffff"),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("ffff::ffff"),
+			Port: 2000,
+		},
+	}
+
 	go func() {
 		conn, err := net.Dial("tcp", pl.Addr().String())
 		if err != nil {
@@ -146,19 +165,6 @@ func TestParse_ipv6(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header := &Header{
-			Version:           2,
-			Command:           PROXY,
-			TransportProtocol: TCPv6,
-			SourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("ffff::ffff"),
-				Port: 1000,
-			},
-			DestinationAddr: &net.TCPAddr{
-				IP:   net.ParseIP("ffff::ffff"),
-				Port: 2000,
-			},
-		}
 		header.WriteTo(conn)
 
 		conn.Write([]byte("ping"))
@@ -198,6 +204,11 @@ func TestParse_ipv6(t *testing.T) {
 	}
 	if addr.Port != 1000 {
 		t.Fatalf("bad: %v", addr)
+	}
+
+	h := conn.(*Conn).ProxyHeader()
+	if !h.EqualsTo(header) {
+		t.Errorf("bad: %v", h)
 	}
 }
 
