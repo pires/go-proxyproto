@@ -116,7 +116,6 @@ func SSL(t proxyproto.TLV) (PP2SSL, error) {
 		return PP2SSL{}, err
 	}
 	versionFound := !ssl.ClientSSL()
-	var cnFound bool
 	for _, tlv := range ssl.TLV {
 		switch tlv.Type {
 		case proxyproto.PP2_SUBTYPE_SSL_VERSION:
@@ -139,10 +138,9 @@ func SSL(t proxyproto.TLV) (PP2SSL, error) {
 			if len(tlv.Value) == 0 || !utf8.Valid(tlv.Value) {
 				return PP2SSL{}, proxyproto.ErrMalformedTLV
 			}
-			cnFound = true
 		}
 	}
-	if !(versionFound && cnFound) {
+	if !versionFound {
 		return PP2SSL{}, proxyproto.ErrMalformedTLV
 	}
 	return ssl, nil
