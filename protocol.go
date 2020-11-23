@@ -21,7 +21,7 @@ type Listener struct {
 // may be speaking the Proxy Protocol. If it is, the RemoteAddr() will
 // return the address of the client instead of the proxy address.
 type Conn struct {
-	bufReader         *bufio.Reader
+	BufReader         *bufio.Reader
 	conn              net.Conn
 	header            *Header
 	once              sync.Once
@@ -83,7 +83,7 @@ func (p *Listener) Addr() net.Addr {
 // the proxy protocol into a proxyproto.Conn
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	pConn := &Conn{
-		bufReader: bufio.NewReader(conn),
+		BufReader: bufio.NewReader(conn),
 		conn:      conn,
 	}
 
@@ -104,7 +104,7 @@ func (p *Conn) Read(b []byte) (int, error) {
 	if p.readErr != nil {
 		return 0, p.readErr
 	}
-	return p.bufReader.Read(b)
+	return p.BufReader.Read(b)
 }
 
 // Write wraps original conn.Write
@@ -155,18 +155,30 @@ func (p *Conn) RemoteAddr() net.Addr {
 }
 
 // TCPConn returns is the underlying connection as TCPConn
+//
+// Note that the wrapper connection might still have some
+// internal data buffered, and should be accessed using
+// conn.BufReader
 func (p *Conn) TCPConn() (conn *net.TCPConn, ok bool) {
 	conn, ok = p.conn.(*net.TCPConn)
 	return
 }
 
 // UnixConn returns is the underlying connection as UnixConn
+//
+// Note that the wrapper connection might still have some
+// internal data buffered, and should be accessed using
+// conn.BufReader
 func (p *Conn) UnixConn() (conn *net.UnixConn, ok bool) {
 	conn, ok = p.conn.(*net.UnixConn)
 	return
 }
 
 // UDPConn returns is the underlying connection as UDPConn
+//
+// Note that the wrapper connection might still have some
+// internal data buffered, and should be accessed using
+// conn.BufReader
 func (p *Conn) UDPConn() (conn *net.UDPConn, ok bool) {
 	conn, ok = p.conn.(*net.UDPConn)
 	return
@@ -188,7 +200,7 @@ func (p *Conn) SetWriteDeadline(t time.Time) error {
 }
 
 func (p *Conn) readHeader() error {
-	header, err := Read(p.bufReader)
+	header, err := Read(p.BufReader)
 	// For the purpose of this wrapper shamefully stolen from armon/go-proxyproto
 	// let's act as if there was no error when PROXY protocol is not present.
 	if err == ErrNoProxyProtocol {
