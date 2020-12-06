@@ -519,6 +519,10 @@ func Test_ConnectionCasts(t *testing.T) {
 	if ok {
 		t.Fatal("err: should be a tcp connection not unix")
 	}
+	_, ok = proxyprotoConn.Raw().(*net.TCPConn)
+	if !ok {
+		t.Fatal("err: should be a tcp connection")
+	}
 }
 
 func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
