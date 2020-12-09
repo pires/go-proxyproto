@@ -68,6 +68,24 @@ var invalidTLVTests = []struct {
 	},
 }
 
+func TestValid0Length(t *testing.T) {
+	r := bufio.NewReader(bytes.NewReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, []byte{byte(PP2_TYPE_MIN_CUSTOM), 0x00, 0x00})...)))
+	h, err := Read(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	tlvs, err := h.TLVs()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tlvs) != 1 {
+		t.Fatalf("expected 1 tlv, got %d", len(tlvs))
+	}
+	if len(tlvs[0].Value) != 0 {
+		t.Fatalf("expected 0 byte tlv value, got %x", tlvs[0].Value)
+	}
+}
+
 func TestInvalidV2TLV(t *testing.T) {
 	for _, tc := range invalidTLVTests {
 		t.Run(tc.name, func(t *testing.T) {
