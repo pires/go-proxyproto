@@ -12,9 +12,11 @@ var (
 	TCP4AddressesAndPorts        = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 	TCP4AddressesAndInvalidPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(INVALID_PORT), strconv.Itoa(INVALID_PORT)}, separator)
 	TCP6AddressesAndPorts        = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
+	TCP6CompatAddressesAndPorts  = strings.Join([]string{IP6_COMPAT_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 
-	fixtureTCP4V1 = "PROXY TCP4 " + TCP4AddressesAndPorts + crlf + "GET /"
-	fixtureTCP6V1 = "PROXY TCP6 " + TCP6AddressesAndPorts + crlf + "GET /"
+	fixtureTCP4V1       = "PROXY TCP4 " + TCP4AddressesAndPorts + crlf + "GET /"
+	fixtureTCP6V1       = "PROXY TCP6 " + TCP6AddressesAndPorts + crlf + "GET /"
+	fixtureTCP6CompatV1 = "PROXY TCP6 " + TCP6CompatAddressesAndPorts + crlf + "GET /"
 )
 
 var invalidParseV1Tests = []struct {
@@ -54,7 +56,7 @@ var invalidParseV1Tests = []struct {
 func TestReadV1Invalid(t *testing.T) {
 	for _, tt := range invalidParseV1Tests {
 		if _, err := Read(tt.reader); err != tt.expectedError {
-			t.Fatalf("TestReadV1Invalid: expected %s, actual %s", tt.expectedError, err.Error())
+			t.Fatalf("TestReadV1Invalid: expected %s, actual %s", tt.expectedError, err)
 		}
 	}
 }
@@ -80,6 +82,16 @@ var validParseAndWriteV1Tests = []struct {
 			Command:           PROXY,
 			TransportProtocol: TCPv6,
 			SourceAddr:        v6addr,
+			DestinationAddr:   v6addr,
+		},
+	},
+	{
+		bufio.NewReader(strings.NewReader(fixtureTCP6CompatV1)),
+		&Header{
+			Version:           1,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        v6CompatAddr,
 			DestinationAddr:   v6addr,
 		},
 	},
