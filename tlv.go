@@ -55,7 +55,7 @@ func SplitTLVs(raw []byte) ([]TLV, error) {
 		tlv := TLV{
 			Type: PP2Type(raw[i]),
 		}
-		if len(raw)-i <= 3 {
+		if len(raw)-i <= 2 {
 			return nil, ErrTruncatedTLV
 		}
 		tlvLen := int(binary.BigEndian.Uint16(raw[i+1 : i+3])) // Max length = 65K
