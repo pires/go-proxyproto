@@ -22,52 +22,73 @@ func initVersion1() *Header {
 }
 
 func parseVersion1(reader *bufio.Reader) (*Header, error) {
-	// Make sure we have a v1 header
+	// Read until LR shows up, otherwise fail.
+	// At this point, can't be sure CR precedes LF which will be validated next.
 	line, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, ErrLineMustEndWithCrlf
+	}
 	if !strings.HasSuffix(line, crlf) {
-		return nil, ErrCantReadProtocolVersionAndCommand
+		return nil, ErrLineMustEndWithCrlf
 	}
+	// Check full signature.
 	tokens := strings.Split(line[:len(line)-2], separator)
-	if len(tokens) < 6 {
-		return nil, ErrCantReadProtocolVersionAndCommand
+	transportProtocol := UNSPEC // doesn't exist in v1 but fits UNKNOWN.
+	if len(tokens) > 0 {
+		// Read address family and protocol
+		switch tokens[1] {
+		case "TCP4":
+			transportProtocol = TCPv4
+		case "TCP6":
+			transportProtocol = TCPv6
+		case "UNKNOWN": // no-op
+		default:
+			return nil, ErrCantReadAddressFamilyAndProtocol
+		}
+
+		// Expect 6 tokens only when UNKNOWN is not present.
+		if tokens[1] != "UNKNOWN" && len(tokens) < 6 {
+			return nil, ErrCantReadAddressFamilyAndProtocol
+		}
 	}
 
+	// Allocation only happens when a signature is found.
 	header := initVersion1()
+	// If UNKNOWN is present, set Command to LOCAL.
+	// Command is not present in v1 but set it for other parts of
+	// this library to rely on it for determining connection details.
+	header.Command = LOCAL
 
-	// Read address family and protocol
-	switch tokens[1] {
-	case "TCP4":
-		header.TransportProtocol = TCPv4
-	case "TCP6":
-		header.TransportProtocol = TCPv6
-	default:
-		header.TransportProtocol = UNSPEC
-	}
+	// Transport protocol has been processed already.
+	header.TransportProtocol = transportProtocol
 
-	// Read addresses and ports
-	sourceIP, err := parseV1IPAddress(header.TransportProtocol, tokens[2])
-	if err != nil {
-		return nil, err
-	}
-	destIP, err := parseV1IPAddress(header.TransportProtocol, tokens[3])
-	if err != nil {
-		return nil, err
-	}
-	sourcePort, err := parseV1PortNumber(tokens[4])
-	if err != nil {
-		return nil, err
-	}
-	destPort, err := parseV1PortNumber(tokens[5])
-	if err != nil {
-		return nil, err
-	}
-	header.SourceAddr = &net.TCPAddr{
-		IP:   sourceIP,
-		Port: sourcePort,
-	}
-	header.DestinationAddr = &net.TCPAddr{
-		IP:   destIP,
-		Port: destPort,
+	// Only process further if UNKNOWN is not present.
+	if header.TransportProtocol != UNSPEC {
+		// Read addresses and ports
+		sourceIP, err := parseV1IPAddress(header.TransportProtocol, tokens[2])
+		if err != nil {
+			return nil, err
+		}
+		destIP, err := parseV1IPAddress(header.TransportProtocol, tokens[3])
+		if err != nil {
+			return nil, err
+		}
+		sourcePort, err := parseV1PortNumber(tokens[4])
+		if err != nil {
+			return nil, err
+		}
+		destPort, err := parseV1PortNumber(tokens[5])
+		if err != nil {
+			return nil, err
+		}
+		header.SourceAddr = &net.TCPAddr{
+			IP:   sourceIP,
+			Port: sourcePort,
+		}
+		header.DestinationAddr = &net.TCPAddr{
+			IP:   destIP,
+			Port: destPort,
+		}
 	}
 
 	return header, nil
@@ -84,7 +105,7 @@ func (header *Header) formatVersion1() ([]byte, error) {
 		proto = "TCP6"
 	default:
 		// Unknown connection (short form)
-		return []byte("PROXY UNKNOWN\r\n"), nil
+		return []byte("PROXY UNKNOWN" + crlf), nil
 	}
 
 	sourceAddr, sourceOK := header.SourceAddr.(*net.TCPAddr)
