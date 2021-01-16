@@ -82,8 +82,13 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return nil, ErrCantReadAddressFamilyAndProtocol
 	}
 	header.TransportProtocol = AddressFamilyAndProtocol(b14)
-	if _, ok := supportedTransportProtocol[header.TransportProtocol]; !ok {
-		return nil, ErrUnsupportedAddressFamilyAndProtocol
+	//  UNSPEC is only supported when LOCAL is set.
+	if header.TransportProtocol == UNSPEC {
+		if header.Command != LOCAL {
+			return nil, ErrUnsupportedAddressFamilyAndProtocol
+		}
+		// Ignore everything else.
+		return header, nil
 	}
 
 	// Make sure there are bytes available as specified in length
@@ -152,48 +157,54 @@ func (header *Header) formatVersion2() ([]byte, error) {
 	buf.Write(SIGV2)
 	buf.WriteByte(header.Command.toByte())
 	buf.WriteByte(header.TransportProtocol.toByte())
-	var addrSrc, addrDst []byte
-	if header.TransportProtocol.IsIPv4() {
-		hdrLen, err := addTLVLen(lengthV4Bytes, len(header.rawTLVs))
-		if err != nil {
-			return nil, err
+	// When UNSPEC, the receiver must ignore addresses and ports.
+	// Therefore there's no point in writing it.
+	if !header.TransportProtocol.IsUnspec() {
+		var addrSrc, addrDst []byte
+		if header.TransportProtocol.IsIPv4() {
+			hdrLen, err := addTLVLen(lengthV4Bytes, len(header.rawTLVs))
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(hdrLen)
+			sourceIP, destIP, _ := header.IPs()
+			addrSrc = sourceIP.To4()
+			addrDst = destIP.To4()
+		} else if header.TransportProtocol.IsIPv6() {
+			hdrLen, err := addTLVLen(lengthV6Bytes, len(header.rawTLVs))
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(hdrLen)
+			sourceIP, destIP, _ := header.IPs()
+			addrSrc = sourceIP.To16()
+			addrDst = destIP.To16()
+		} else if header.TransportProtocol.IsUnix() {
+			buf.Write(lengthUnixBytes)
+			sourceAddr, destAddr, ok := header.UnixAddrs()
+			if !ok {
+				return nil, ErrInvalidAddress
+			}
+			addrSrc = formatUnixName(sourceAddr.Name)
+			addrDst = formatUnixName(destAddr.Name)
 		}
-		buf.Write(hdrLen)
-		sourceIP, destIP, _ := header.IPs()
-		addrSrc = sourceIP.To4()
-		addrDst = destIP.To4()
-	} else if header.TransportProtocol.IsIPv6() {
-		hdrLen, err := addTLVLen(lengthV6Bytes, len(header.rawTLVs))
-		if err != nil {
-			return nil, err
-		}
-		buf.Write(hdrLen)
-		sourceIP, destIP, _ := header.IPs()
-		addrSrc = sourceIP.To16()
-		addrDst = destIP.To16()
-	} else if header.TransportProtocol.IsUnix() {
-		buf.Write(lengthUnixBytes)
-		sourceAddr, destAddr, ok := header.UnixAddrs()
-		if !ok {
+
+		//
+		if addrSrc == nil || addrDst == nil {
 			return nil, ErrInvalidAddress
 		}
-		addrSrc = formatUnixName(sourceAddr.Name)
-		addrDst = formatUnixName(destAddr.Name)
-	}
-	if addrSrc == nil || addrDst == nil {
-		return nil, ErrInvalidAddress
-	}
-	buf.Write(addrSrc)
-	buf.Write(addrDst)
+		buf.Write(addrSrc)
+		buf.Write(addrDst)
 
-	if sourcePort, destPort, ok := header.Ports(); ok {
-		portBytes := make([]byte, 2)
+		if sourcePort, destPort, ok := header.Ports(); ok {
+			portBytes := make([]byte, 2)
 
-		binary.BigEndian.PutUint16(portBytes, uint16(sourcePort))
-		buf.Write(portBytes)
+			binary.BigEndian.PutUint16(portBytes, uint16(sourcePort))
+			buf.Write(portBytes)
 
-		binary.BigEndian.PutUint16(portBytes, uint16(destPort))
-		buf.Write(portBytes)
+			binary.BigEndian.PutUint16(portBytes, uint16(destPort))
+			buf.Write(portBytes)
+		}
 	}
 
 	if len(header.rawTLVs) > 0 {

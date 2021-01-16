@@ -13,15 +13,6 @@ const (
 	UnixDatagram AddressFamilyAndProtocol = '\x32'
 )
 
-var supportedTransportProtocol = map[AddressFamilyAndProtocol]bool{
-	TCPv4:        true,
-	UDPv4:        true,
-	TCPv6:        true,
-	UDPv6:        true,
-	UnixStream:   true,
-	UnixDatagram: true,
-}
-
 // IsIPv4 returns true if the address family is IPv4 (AF_INET4), false otherwise.
 func (ap AddressFamilyAndProtocol) IsIPv4() bool {
 	return 0x10 == ap&0xF0

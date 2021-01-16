@@ -67,75 +67,96 @@ func pad(b []byte, n int) []byte {
 }
 
 var invalidParseV2Tests = []struct {
+	desc          string
 	reader        *bufio.Reader
 	expectedError error
 }{
 	{
-		newBufioReader(SIGV2[2:]),
-		ErrNoProxyProtocol,
+		desc:          "no signature",
+		reader:        newBufioReader([]byte(NO_PROTOCOL)),
+		expectedError: ErrNoProxyProtocol,
 	},
 	{
-		newBufioReader([]byte(NO_PROTOCOL)),
-		ErrNoProxyProtocol,
+		desc:          "truncated v2 signature",
+		reader:        newBufioReader(SIGV2[2:]),
+		expectedError: ErrNoProxyProtocol,
 	},
 	{
-		newBufioReader(SIGV2),
-		ErrCantReadProtocolVersionAndCommand,
+		desc:          "v2 signature and nothing else",
+		reader:        newBufioReader(SIGV2),
+		expectedError: ErrCantReadProtocolVersionAndCommand,
 	},
 	{
-		newBufioReader(append(SIGV2, invalidRune)),
-		ErrUnsupportedProtocolVersionAndCommand,
+		desc:          "v2 signature with invalid command",
+		reader:        newBufioReader(append(SIGV2, invalidRune)),
+		expectedError: ErrUnsupportedProtocolVersionAndCommand,
 	},
 	{
-		newBufioReader(append(SIGV2, byte(PROXY))),
-		ErrCantReadAddressFamilyAndProtocol,
+		desc:          "v2 signature with command but nothing else",
+		reader:        newBufioReader(append(SIGV2, byte(PROXY))),
+		expectedError: ErrCantReadAddressFamilyAndProtocol,
 	},
 	{
-		newBufioReader(append(SIGV2, byte(PROXY), invalidRune)),
-		ErrUnsupportedAddressFamilyAndProtocol,
+		desc:          "command proxy but inet family unspec",
+		reader:        newBufioReader(append(SIGV2, byte(PROXY), byte(UNSPEC))),
+		expectedError: ErrUnsupportedAddressFamilyAndProtocol,
 	},
 	{
-		newBufioReader(append(SIGV2, byte(PROXY), byte(TCPv4))),
-		ErrCantReadLength,
+		desc:          "v2 signature with command and invalid inet family", // translated to UNSPEC
+		reader:        newBufioReader(append(SIGV2, byte(PROXY), invalidRune)),
+		expectedError: ErrCantReadLength,
 	},
 	{
-		newBufioReader(append(SIGV2, byte(PROXY), byte(TCPv4), invalidRune)),
-		ErrCantReadLength,
+		desc:          "TCPv4 but no length",
+		reader:        newBufioReader(append(SIGV2, byte(PROXY), byte(TCPv4))),
+		expectedError: ErrCantReadLength,
 	},
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), lengthV4Bytes...)),
-		ErrInvalidLength,
+		desc:          "TCPv4 but invalid length",
+		reader:        newBufioReader(append(SIGV2, byte(PROXY), byte(TCPv4), invalidRune)),
+		expectedError: ErrCantReadLength,
 	},
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), lengthV6Bytes...)),
-		ErrInvalidLength,
+		desc:          "TCPv4 with mismatching length",
+		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), lengthV4Bytes...)),
+		expectedError: ErrInvalidLength,
 	},
 	{
-		newBufioReader(append(append(append(SIGV2, byte(PROXY), byte(TCPv4)), lengthEmptyBytes...), fixtureIPv6Address...)),
-		ErrInvalidLength,
+		desc:          "TCPv6 with mismatching length",
+		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), lengthV6Bytes...)),
+		expectedError: ErrInvalidLength,
 	},
 	{
-		newBufioReader(append(append(append(SIGV2, byte(PROXY), byte(TCPv6)), lengthV6Bytes...), fixtureIPv4Address...)),
-		ErrInvalidLength,
+		desc:          "TCPv4 length zero but with address and ports",
+		reader:        newBufioReader(append(append(append(SIGV2, byte(PROXY), byte(TCPv4)), lengthEmptyBytes...), fixtureIPv6Address...)),
+		expectedError: ErrInvalidLength,
+	},
+	{
+		desc:          "TCPv4 length zero but with address and ports",
+		reader:        newBufioReader(append(append(append(SIGV2, byte(PROXY), byte(TCPv6)), lengthV6Bytes...), fixtureIPv4Address...)),
+		expectedError: ErrInvalidLength,
 	},
 }
 
 func TestParseV2Invalid(t *testing.T) {
 	for _, tt := range invalidParseV2Tests {
-		if _, err := Read(tt.reader); err != tt.expectedError {
-			t.Fatalf("TestParseV2Invalid: expected %s, actual %s", tt.expectedError, err.Error())
-		}
+		t.Run(tt.desc, func(t *testing.T) {
+			if _, err := Read(tt.reader); err != tt.expectedError {
+				t.Fatalf("expected %s, actual %s", tt.expectedError, err.Error())
+			}
+		})
 	}
 }
 
 var validParseAndWriteV2Tests = []struct {
+	desc           string
 	reader         *bufio.Reader
 	expectedHeader *Header
 }{
-	// LOCAL
 	{
-		newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), fixtureIPv4V2...)),
-		&Header{
+		desc:   "local",
+		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), fixtureIPv4V2...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           LOCAL,
 			TransportProtocol: TCPv4,
@@ -143,10 +164,21 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   v4addr,
 		},
 	},
-	// PROXY TCP IPv4
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2...)),
-		&Header{
+		desc:   "local unspec",
+		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), fixtureIPv4V2...)),
+		expectedHeader: &Header{
+			Version:           2,
+			Command:           LOCAL,
+			TransportProtocol: UNSPEC,
+			SourceAddr:        nil,
+			DestinationAddr:   nil,
+		},
+	},
+	{
+		desc:   "proxy TCPv4",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: TCPv4,
@@ -154,10 +186,10 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   v4addr,
 		},
 	},
-	// PROXY TCP IPv6
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2...)),
-		&Header{
+		desc:   "proxy TCPv6",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: TCPv6,
@@ -165,10 +197,10 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   v6addr,
 		},
 	},
-	// PROXY TCP IPv4 with TLV
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2TLV...)),
-		&Header{
+		desc:   "proxy TCPv4 with TLV",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2TLV...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: TCPv4,
@@ -177,10 +209,10 @@ var validParseAndWriteV2Tests = []struct {
 			rawTLVs:           fixtureTLV,
 		},
 	},
-	// PROXY TCP IPv6 with TLV
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2TLV...)),
-		&Header{
+		desc:   "proxy TCPv6 with TLV",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2TLV...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: TCPv6,
@@ -189,10 +221,10 @@ var validParseAndWriteV2Tests = []struct {
 			rawTLVs:           fixtureTLV,
 		},
 	},
-	// PROXY UDP IPv4
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2...)),
-		&Header{
+		desc:   "proxy UDPv4",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: UDPv4,
@@ -200,10 +232,10 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   v4UDPAddr,
 		},
 	},
-	// PROXY UDP IPv6
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2...)),
-		&Header{
+		desc:   "proxy UDPv6",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: UDPv6,
@@ -211,10 +243,10 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   v6UDPAddr,
 		},
 	},
-	// PROXY UNIX STREAM
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixStream)), fixtureUnixV2...)),
-		&Header{
+		desc:   "proxy unix stream",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixStream)), fixtureUnixV2...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: UnixStream,
@@ -222,10 +254,10 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   unixStreamAddr,
 		},
 	},
-	// PROXY UNIX DATAGRAM
 	{
-		newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixDatagram)), fixtureUnixV2...)),
-		&Header{
+		desc:   "proxy unix datagram ",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixDatagram)), fixtureUnixV2...)),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: UnixDatagram,
@@ -237,46 +269,51 @@ var validParseAndWriteV2Tests = []struct {
 
 func TestParseV2Valid(t *testing.T) {
 	for _, tt := range validParseAndWriteV2Tests {
-		header, err := Read(tt.reader)
-		if err != nil {
-			t.Fatal("TestParseV2Valid: unexpected error", err.Error())
-		}
-		if !header.EqualsTo(tt.expectedHeader) {
-			t.Fatalf("TestParseV2Valid: expected %#v, actual %#v", tt.expectedHeader, header)
-		}
+		t.Run(tt.desc, func(t *testing.T) {
+			header, err := Read(tt.reader)
+			if err != nil {
+				t.Fatal("unexpected error", err.Error())
+			}
+			if !header.EqualsTo(tt.expectedHeader) {
+				t.Fatalf("expected %#v, actual %#v", tt.expectedHeader, header)
+			}
+		})
 	}
 }
 
 func TestWriteV2Valid(t *testing.T) {
 	for _, tt := range validParseAndWriteV2Tests {
-		var b bytes.Buffer
-		w := bufio.NewWriter(&b)
-		if _, err := tt.expectedHeader.WriteTo(w); err != nil {
-			t.Fatal("TestWriteVersion2: Unexpected error ", err)
-		}
-		w.Flush()
+		t.Run(tt.desc, func(t *testing.T) {
+			var b bytes.Buffer
+			w := bufio.NewWriter(&b)
+			if _, err := tt.expectedHeader.WriteTo(w); err != nil {
+				t.Fatal("unexpected error ", err)
+			}
+			w.Flush()
 
-		// Read written bytes to validate written header
-		r := bufio.NewReader(&b)
-		newHeader, err := Read(r)
-		if err != nil {
-			t.Fatal("TestWriteVersion2: Unexpected error ", err)
-		}
+			// Read written bytes to validate written header
+			r := bufio.NewReader(&b)
+			newHeader, err := Read(r)
+			if err != nil {
+				t.Fatal("unexpected error ", err)
+			}
 
-		if !newHeader.EqualsTo(tt.expectedHeader) {
-			t.Fatalf("TestWriteVersion2: expected %#v, actual %#v", tt.expectedHeader, newHeader)
-		}
+			if !newHeader.EqualsTo(tt.expectedHeader) {
+				t.Fatalf("expected %#v, actual %#v", tt.expectedHeader, newHeader)
+			}
+		})
 	}
 }
 
 var validParseV2PaddedTests = []struct {
+	desc           string
 	value          []byte
 	expectedHeader *Header
 }{
-	// PROXY TCP IPv4
 	{
-		append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2Padded...),
-		&Header{
+		desc:  "proxy TCPv4",
+		value: append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2Padded...),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: TCPv4,
@@ -285,10 +322,10 @@ var validParseV2PaddedTests = []struct {
 			rawTLVs:           make([]byte, lengthPadded-lengthV4),
 		},
 	},
-	// PROXY TCP IPv6
 	{
-		append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2Padded...),
-		&Header{
+		desc:  "proxy TCPv6",
+		value: append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2Padded...),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: TCPv6,
@@ -297,10 +334,10 @@ var validParseV2PaddedTests = []struct {
 			rawTLVs:           make([]byte, lengthPadded-lengthV6),
 		},
 	},
-	// PROXY UDP IPv4
 	{
-		append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2Padded...),
-		&Header{
+		desc:  "proxy UDPv4",
+		value: append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2Padded...),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: UDPv4,
@@ -309,10 +346,10 @@ var validParseV2PaddedTests = []struct {
 			rawTLVs:           make([]byte, lengthPadded-lengthV4),
 		},
 	},
-	// PROXY UDP IPv6
 	{
-		append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2Padded...),
-		&Header{
+		desc:  "proxy UDPv6",
+		value: append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2Padded...),
+		expectedHeader: &Header{
 			Version:           2,
 			Command:           PROXY,
 			TransportProtocol: UDPv6,
@@ -325,24 +362,26 @@ var validParseV2PaddedTests = []struct {
 
 func TestParseV2Padded(t *testing.T) {
 	for _, tt := range validParseV2PaddedTests {
-		reader := newBufioReader(append(tt.value, arbitraryTailBytes...))
+		t.Run(tt.desc, func(t *testing.T) {
+			reader := newBufioReader(append(tt.value, arbitraryTailBytes...))
 
-		newHeader, err := Read(reader)
-		if err != nil {
-			t.Fatal("TestParseV2Padded: Unexpected error ", err)
-		}
-		if !newHeader.EqualsTo(tt.expectedHeader) {
-			t.Fatalf("TestParseV2Padded: expected %#v, actual %#v", tt.expectedHeader, newHeader)
-		}
+			newHeader, err := Read(reader)
+			if err != nil {
+				t.Fatal("unexpected error ", err)
+			}
+			if !newHeader.EqualsTo(tt.expectedHeader) {
+				t.Fatalf("expected %#v, actual %#v", tt.expectedHeader, newHeader)
+			}
 
-		// Check that remaining padding bytes have been flushed
-		nextBytes, err := reader.Peek(len(arbitraryTailBytes))
-		if err != nil {
-			t.Fatal("TestParseV2Padded: Unexpected error ", err)
-		}
-		if !reflect.DeepEqual(nextBytes, arbitraryTailBytes) {
-			t.Fatalf("TestParseV2Padded: expected %#v, actual %#v", arbitraryTailBytes, nextBytes)
-		}
+			// Check that remaining padding bytes have been flushed
+			nextBytes, err := reader.Peek(len(arbitraryTailBytes))
+			if err != nil {
+				t.Fatal("unexpected error ", err)
+			}
+			if !reflect.DeepEqual(nextBytes, arbitraryTailBytes) {
+				t.Fatalf("expected %#v, actual %#v", arbitraryTailBytes, nextBytes)
+			}
+		})
 	}
 }
 
@@ -356,67 +395,81 @@ func TestV2EqualsToTLV(t *testing.T) {
 	}
 	hdr, err := Read(newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2TLV...)))
 	if err != nil {
-		t.Fatal("TestV2EqualsToTLV: Unexpected error ", err)
+		t.Fatal("unexpected error ", err)
 	}
 	if eHdr.EqualsTo(hdr) {
-		t.Fatalf("TestV2EqualsToTLV: Unexpectedly equal created: %#v, parsed: %#v", eHdr, hdr)
+		t.Fatalf("unexpectedly equal created: %#v, parsed: %#v", eHdr, hdr)
 	}
 	eHdr.rawTLVs = fixtureTLV[:]
 
 	if !eHdr.EqualsTo(hdr) {
-		t.Fatalf("TestV2EqualsToTLV: Unexpectedly unequal after tlv copy created: %#v, parsed: %#v", eHdr, hdr)
+		t.Fatalf("unexpectedly unequal after tlv copy created: %#v, parsed: %#v", eHdr, hdr)
 	}
 
 	eHdr.rawTLVs[0] = eHdr.rawTLVs[0] + 1
 	if eHdr.EqualsTo(hdr) {
-		t.Fatalf("TestV2EqualsToTLV: Unexpectedly equal after changing tlv created: %#v, parsed: %#v", eHdr, hdr)
+		t.Fatalf("unexpectedly equal after changing tlv created: %#v, parsed: %#v", eHdr, hdr)
 	}
 }
 
-var tlvFormatTests = []*Header{
-	// PROXY TCP IPv4
-	&Header{
-		Version:           2,
-		Command:           PROXY,
-		TransportProtocol: TCPv4,
-		SourceAddr:        v4addr,
-		DestinationAddr:   v4addr,
-		rawTLVs:           make([]byte, 1<<16),
+var tlvFormatTests = []struct {
+	desc   string
+	header *Header
+}{
+	{
+		desc: "proxy TCPv4",
+		header: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
+			rawTLVs:           make([]byte, 1<<16),
+		},
 	},
-	// PROXY TCP IPv6
-	&Header{
-		Version:           2,
-		Command:           PROXY,
-		TransportProtocol: TCPv6,
-		SourceAddr:        v6addr,
-		DestinationAddr:   v6addr,
-		rawTLVs:           make([]byte, 1<<16),
+	{
+		desc: "proxy TCPv6",
+		header: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        v6addr,
+			DestinationAddr:   v6addr,
+			rawTLVs:           make([]byte, 1<<16),
+		},
 	},
-	// PROXY UDP IPv4
-	&Header{
-		Version:           2,
-		Command:           PROXY,
-		TransportProtocol: UDPv4,
-		SourceAddr:        v4addr,
-		DestinationAddr:   v4addr,
-		rawTLVs:           make([]byte, 1<<16),
+	{
+		desc: "proxy UDPv4",
+		header: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UDPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
+			rawTLVs:           make([]byte, 1<<16),
+		},
 	},
-	// PROXY UDP IPv6
-	&Header{
-		Version:           2,
-		Command:           PROXY,
-		TransportProtocol: UDPv6,
-		SourceAddr:        v6addr,
-		DestinationAddr:   v6addr,
-		rawTLVs:           make([]byte, 1<<16),
+	{
+		desc: "proxy UDPv6",
+		header: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UDPv6,
+			SourceAddr:        v6addr,
+			DestinationAddr:   v6addr,
+			rawTLVs:           make([]byte, 1<<16),
+		},
 	},
 }
 
 func TestV2TLVFormatTooLargeTLV(t *testing.T) {
 	for _, tt := range tlvFormatTests {
-		if _, err := tt.Format(); err != errUint16Overflow {
-			t.Fatalf("TestV2TLVFormatTooLargeTLV: missing or expected error when formatting too-large TLV %#v", err)
-		}
+		t.Run(tt.desc, func(t *testing.T) {
+			if _, err := tt.header.Format(); err != errUint16Overflow {
+				t.Fatalf("missing or expected error when formatting too-large TLV %#v", err)
+			}
+		})
+
 	}
 }
 
@@ -429,5 +482,6 @@ func fixtureWithTLV(cur []byte, addr []byte, tlv []byte) []byte {
 	if err != nil {
 		panic(err)
 	}
+
 	return append(append(tlen, addr...), tlv...)
 }

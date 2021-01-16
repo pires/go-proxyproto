@@ -76,7 +76,7 @@ func TestReadV1Invalid(t *testing.T) {
 	for _, tt := range invalidParseV1Tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			if _, err := Read(tt.reader); err != tt.expectedError {
-				t.Fatalf("TestReadV1Invalid: expected %s, actual %s", tt.expectedError, err.Error())
+				t.Fatalf("expected %s, actual %s", tt.expectedError, err.Error())
 			}
 		})
 	}
@@ -138,10 +138,10 @@ func TestParseV1Valid(t *testing.T) {
 		t.Run(tt.desc, func(t *testing.T) {
 			header, err := Read(tt.reader)
 			if err != nil {
-				t.Fatal("TestParseV1Valid: unexpected error", err.Error())
+				t.Fatal("unexpected error", err.Error())
 			}
 			if !header.EqualsTo(tt.expectedHeader) {
-				t.Fatalf("TestParseV1Valid: expected %#v, actual %#v", tt.expectedHeader, header)
+				t.Fatalf("expected %#v, actual %#v", tt.expectedHeader, header)
 			}
 		})
 	}
@@ -153,7 +153,7 @@ func TestWriteV1Valid(t *testing.T) {
 			var b bytes.Buffer
 			w := bufio.NewWriter(&b)
 			if _, err := tt.expectedHeader.WriteTo(w); err != nil {
-				t.Fatal("TestWriteV1Valid: Unexpected error ", err)
+				t.Fatal("unexpected error ", err)
 			}
 			w.Flush()
 
@@ -161,11 +161,11 @@ func TestWriteV1Valid(t *testing.T) {
 			r := bufio.NewReader(&b)
 			newHeader, err := Read(r)
 			if err != nil {
-				t.Fatal("TestWriteV1Valid: Unexpected error ", err)
+				t.Fatal("unexpected error ", err)
 			}
 
 			if !newHeader.EqualsTo(tt.expectedHeader) {
-				t.Fatalf("TestWriteV1Valid: expected %#v, actual %#v", tt.expectedHeader, newHeader)
+				t.Fatalf("expected %#v, actual %#v", tt.expectedHeader, newHeader)
 			}
 		})
 	}
