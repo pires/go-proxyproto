@@ -22,7 +22,7 @@ func initVersion1() *Header {
 }
 
 func parseVersion1(reader *bufio.Reader) (*Header, error) {
-	// Read until LR shows up, otherwise fail.
+	// Read until LF shows up, otherwise fail.
 	// At this point, can't be sure CR precedes LF which will be validated next.
 	line, err := reader.ReadString('\n')
 	if err != nil {
