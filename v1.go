@@ -41,13 +41,13 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 			transportProtocol = TCPv4
 		case "TCP6":
 			transportProtocol = TCPv6
-		case "UNKNOWN": // no-op
+		case "UNKNOWN": // no-op as UNSPEC is set already
 		default:
 			return nil, ErrCantReadAddressFamilyAndProtocol
 		}
 
 		// Expect 6 tokens only when UNKNOWN is not present.
-		if tokens[1] != "UNKNOWN" && len(tokens) < 6 {
+		if !transportProtocol.IsUnspec() && len(tokens) < 6 {
 			return nil, ErrCantReadAddressFamilyAndProtocol
 		}
 	}
