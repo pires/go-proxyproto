@@ -157,7 +157,7 @@ func (p *Conn) RemoteAddr() net.Addr {
 // Raw returns the underlying connection which can be casted to
 // a concrete type, allowing access to specialized functions.
 //
-// Use this ONLY if you know exactly what you are doing. 
+// Use this ONLY if you know exactly what you are doing.
 func (p *Conn) Raw() net.Conn {
 	return p.conn
 }
@@ -165,7 +165,7 @@ func (p *Conn) Raw() net.Conn {
 // TCPConn returns the underlying TCP connection,
 // allowing access to specialized functions.
 //
-// Use this ONLY if you know exactly what you are doing. 
+// Use this ONLY if you know exactly what you are doing.
 func (p *Conn) TCPConn() (conn *net.TCPConn, ok bool) {
 	conn, ok = p.conn.(*net.TCPConn)
 	return
@@ -174,7 +174,7 @@ func (p *Conn) TCPConn() (conn *net.TCPConn, ok bool) {
 // UnixConn returns the underlying Unix socket connection,
 // allowing access to specialized functions.
 //
-// Use this ONLY if you know exactly what you are doing. 
+// Use this ONLY if you know exactly what you are doing.
 func (p *Conn) UnixConn() (conn *net.UnixConn, ok bool) {
 	conn, ok = p.conn.(*net.UnixConn)
 	return
@@ -183,7 +183,7 @@ func (p *Conn) UnixConn() (conn *net.UnixConn, ok bool) {
 // UDPConn returns the underlying UDP connection,
 // allowing access to specialized functions.
 //
-// Use this ONLY if you know exactly what you are doing. 
+// Use this ONLY if you know exactly what you are doing.
 func (p *Conn) UDPConn() (conn *net.UDPConn, ok bool) {
 	conn, ok = p.conn.(*net.UDPConn)
 	return
