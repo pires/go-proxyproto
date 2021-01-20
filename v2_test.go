@@ -56,6 +56,7 @@ var (
 	}()
 	fixtureIPv4V2TLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureTLV)
 	fixtureIPv6V2TLV = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
+	fixtureUnspecTLV = fixtureWithTLV(lengthUnspecBytes, []byte{}, fixtureTLV)
 
 	// Arbitrary bytes following proxy bytes
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
@@ -117,6 +118,11 @@ var invalidParseV2Tests = []struct {
 		expectedError: ErrCantReadLength,
 	},
 	{
+		desc:          "unspec but no length",
+		reader:        newBufioReader(append(SIGV2, byte(LOCAL), byte(UNSPEC))),
+		expectedError: ErrCantReadLength,
+	},
+	{
 		desc:          "TCPv4 with mismatching length",
 		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), lengthV4Bytes...)),
 		expectedError: ErrInvalidLength,
@@ -132,8 +138,13 @@ var invalidParseV2Tests = []struct {
 		expectedError: ErrInvalidLength,
 	},
 	{
-		desc:          "TCPv4 length zero but with address and ports",
+		desc:          "TCPv6 with IPv6 length but IPv4 address and ports",
 		reader:        newBufioReader(append(append(append(SIGV2, byte(PROXY), byte(TCPv6)), lengthV6Bytes...), fixtureIPv4Address...)),
+		expectedError: ErrInvalidLength,
+	},
+	{
+		desc:          "unspec length greater than zero but no TLVs",
+		reader:        newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), fixtureUnspecTLV[:2]...)),
 		expectedError: ErrInvalidLength,
 	},
 }
@@ -166,7 +177,7 @@ var validParseAndWriteV2Tests = []struct {
 	},
 	{
 		desc:   "local unspec",
-		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), fixtureIPv4V2...)),
+		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), lengthUnspecBytes...)),
 		expectedHeader: &Header{
 			Version:           2,
 			Command:           LOCAL,
@@ -222,6 +233,18 @@ var validParseAndWriteV2Tests = []struct {
 		},
 	},
 	{
+		desc:   "local unspec with TLV",
+		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), fixtureUnspecTLV...)),
+		expectedHeader: &Header{
+			Version:           2,
+			Command:           LOCAL,
+			TransportProtocol: UNSPEC,
+			SourceAddr:        nil,
+			DestinationAddr:   nil,
+			rawTLVs:           fixtureTLV,
+		},
+	},
+	{
 		desc:   "proxy UDPv4",
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2...)),
 		expectedHeader: &Header{
@@ -255,7 +278,7 @@ var validParseAndWriteV2Tests = []struct {
 		},
 	},
 	{
-		desc:   "proxy unix datagram ",
+		desc:   "proxy unix datagram",
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixDatagram)), fixtureUnixV2...)),
 		expectedHeader: &Header{
 			Version:           2,
@@ -457,6 +480,17 @@ var tlvFormatTests = []struct {
 			TransportProtocol: UDPv6,
 			SourceAddr:        v6addr,
 			DestinationAddr:   v6addr,
+			rawTLVs:           make([]byte, 1<<16),
+		},
+	},
+	{
+		desc: "local unspec",
+		header: &Header{
+			Version:           2,
+			Command:           LOCAL,
+			TransportProtocol: UNSPEC,
+			SourceAddr:        nil,
+			DestinationAddr:   nil,
 			rawTLVs:           make([]byte, 1<<16),
 		},
 	},
