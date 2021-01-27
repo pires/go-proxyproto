@@ -537,7 +537,7 @@ func TestFormatInvalid(t *testing.T) {
 func TestHeaderProxyFromAddrs(t *testing.T) {
 	unspec := &Header{
 		Version:           2,
-		Command:           PROXY,
+		Command:           LOCAL,
 		TransportProtocol: UNSPEC,
 	}
 

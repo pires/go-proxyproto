@@ -54,7 +54,7 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 	}
 	h := &Header{
 		Version:           version,
-		Command:           PROXY,
+		Command:           LOCAL,
 		TransportProtocol: UNSPEC,
 	}
 	switch sourceAddr := sourceAddr.(type) {
@@ -88,6 +88,7 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 		}
 	}
 	if h.TransportProtocol != UNSPEC {
+		h.Command = PROXY
 		h.SourceAddr = sourceAddr
 		h.DestinationAddr = destAddr
 	}
@@ -152,17 +153,15 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 	if otherHeader == nil {
 		return false
 	}
-	if header.Command.IsLocal() {
-		return true
-	}
 	// TLVs only exist for version 2
-	if header.Version == 0x02 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
+	if header.Version == 2 && !bytes.Equal(header.rawTLVs, otherHeader.rawTLVs) {
 		return false
 	}
-	if header.Version != otherHeader.Version || header.TransportProtocol != otherHeader.TransportProtocol {
+	if header.Version != otherHeader.Version || header.Command != otherHeader.Command || header.TransportProtocol != otherHeader.TransportProtocol {
 		return false
 	}
-	if header.TransportProtocol == UNSPEC {
+	// Return early for header with LOCAL command, which contains no address information
+	if header.Command == LOCAL {
 		return true
 	}
 	return header.SourceAddr.String() == otherHeader.SourceAddr.String() &&
