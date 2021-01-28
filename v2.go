@@ -205,7 +205,6 @@ func (header *Header) formatVersion2() ([]byte, error) {
 			addrDst = formatUnixName(destAddr.Name)
 		}
 
-		//
 		if addrSrc == nil || addrDst == nil {
 			return nil, ErrInvalidAddress
 		}

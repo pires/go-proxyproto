@@ -46,6 +46,11 @@ var invalidParseV1Tests = []struct {
 		expectedError: ErrCantReadAddressFamilyAndProtocol,
 	},
 	{
+		desc:          "proxy no space crlf",
+		reader:        newBufioReader([]byte("PROXY" + crlf)),
+		expectedError: ErrCantReadAddressFamilyAndProtocol,
+	},
+	{
 		desc:          "proxy something crlf",
 		reader:        newBufioReader([]byte("PROXY SOMETHING" + crlf)),
 		expectedError: ErrCantReadAddressFamilyAndProtocol,
@@ -114,7 +119,7 @@ var validParseAndWriteV1Tests = []struct {
 		reader: bufio.NewReader(strings.NewReader(fixtureUnknown)),
 		expectedHeader: &Header{
 			Version:           1,
-			Command:           PROXY,
+			Command:           LOCAL,
 			TransportProtocol: UNSPEC,
 			SourceAddr:        nil,
 			DestinationAddr:   nil,
@@ -125,7 +130,7 @@ var validParseAndWriteV1Tests = []struct {
 		reader: bufio.NewReader(strings.NewReader(fixtureUnknownWithAddresses)),
 		expectedHeader: &Header{
 			Version:           1,
-			Command:           PROXY,
+			Command:           LOCAL,
 			TransportProtocol: UNSPEC,
 			SourceAddr:        nil,
 			DestinationAddr:   nil,
