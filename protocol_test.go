@@ -9,6 +9,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"testing"
 )
@@ -738,6 +740,61 @@ func Test_MisconfiguredTLSServerRespondsWithUnderlyingError(t *testing.T) {
 	_, err = conn.Read(recv)
 	if err.Error() != "tls: first record does not look like a TLS handshake" {
 		t.Fatalf("expected tls handshake error, got %s", err)
+	}
+}
+
+type testConn struct {
+	readFromCalledWith io.Reader
+	reads              int
+	net.Conn           // nil; crash on any unexpected use
+}
+
+func (c *testConn) ReadFrom(r io.Reader) (int64, error) {
+	c.readFromCalledWith = r
+	b, err := ioutil.ReadAll(r)
+	return int64(len(b)), err
+}
+func (c *testConn) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+func (c *testConn) Read(p []byte) (int, error) {
+	if c.reads == 0 {
+		return 0, io.EOF
+	}
+	c.reads--
+	return 1, nil
+}
+
+func TestCopyToWrappedConnection(t *testing.T) {
+	innerConn := &testConn{}
+	wrappedConn := NewConn(innerConn)
+	dummySrc := &testConn{reads: 1}
+
+	io.Copy(wrappedConn, dummySrc)
+	if innerConn.readFromCalledWith != dummySrc {
+		t.Error("Expected io.Copy to delegate to ReadFrom function of inner destination connection")
+	}
+}
+
+func TestCopyFromWrappedConnection(t *testing.T) {
+	wrappedConn := NewConn(&testConn{reads: 1})
+	dummyDst := &testConn{}
+
+	io.Copy(dummyDst, wrappedConn)
+	if dummyDst.readFromCalledWith != wrappedConn.conn {
+		t.Errorf("Expected io.Copy to pass inner source connection to ReadFrom method of destination")
+	}
+}
+
+func TestCopyFromWrappedConnectionToWrappedConnection(t *testing.T) {
+	innerConn1 := &testConn{reads: 1}
+	wrappedConn1 := NewConn(innerConn1)
+	innerConn2 := &testConn{}
+	wrappedConn2 := NewConn(innerConn2)
+
+	io.Copy(wrappedConn1, wrappedConn2)
+	if innerConn1.readFromCalledWith != innerConn2 {
+		t.Errorf("Expected io.Copy to pass inner source connection to ReadFrom of inner destination connection")
 	}
 }
 
