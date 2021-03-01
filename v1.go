@@ -3,6 +3,7 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -24,7 +25,7 @@ func initVersion1() *Header {
 func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	// The header must be terminated by CRLF and cannot be more than 107 bytes long.
 	buf, err := reader.Peek(107)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return nil, ErrLineMustEndWithCrlf
 	}
 	pos := bytes.Index(buf, []byte(crlf))
