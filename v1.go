@@ -22,17 +22,20 @@ func initVersion1() *Header {
 }
 
 func parseVersion1(reader *bufio.Reader) (*Header, error) {
-	// Read until LF shows up, otherwise fail.
-	// At this point, can't be sure CR precedes LF which will be validated next.
-	line, err := reader.ReadString('\n')
+	// The header must be terminated by CRLF and cannot be more than 107 bytes long.
+	buf, err := reader.Peek(107)
 	if err != nil {
 		return nil, ErrLineMustEndWithCrlf
 	}
-	if !strings.HasSuffix(line, crlf) {
+	pos := bytes.Index(buf, []byte(crlf))
+	if pos == -1 {
 		return nil, ErrLineMustEndWithCrlf
 	}
+	// Consume the input up to the terminator.
+	line := string(buf[:pos])
+	reader.Discard(pos + len(crlf))
 	// Check full signature.
-	tokens := strings.Split(line[:len(line)-2], separator)
+	tokens := strings.Split(line, separator)
 
 	// Expect at least 2 tokens: "PROXY" and the transport protocol.
 	if len(tokens) < 2 {
