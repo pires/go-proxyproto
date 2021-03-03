@@ -64,7 +64,7 @@ var invalidParseV1Tests = []struct {
 	{
 		desc:          "incomplete signature TCP4",
 		reader:        newBufioReader([]byte("PROXY TCP4 " + IPv4AddressesAndPorts)),
-		expectedError: ErrLineMustEndWithCrlf,
+		expectedError: ErrCantReadVersion1Header,
 	},
 	{
 		desc:          "TCP6 with IPv4 addresses",

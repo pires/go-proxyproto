@@ -3,6 +3,7 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -22,17 +23,79 @@ func initVersion1() *Header {
 }
 
 func parseVersion1(reader *bufio.Reader) (*Header, error) {
-	// Read until LF shows up, otherwise fail.
-	// At this point, can't be sure CR precedes LF which will be validated next.
-	line, err := reader.ReadString('\n')
-	if err != nil {
+	//The header cannot be more than 107 bytes long. Per spec:
+	//
+	//   (...)
+	//   - worst case (optional fields set to 0xff) :
+	//     "PROXY UNKNOWN ffff:f...f:ffff ffff:f...f:ffff 65535 65535\r\n"
+	//     => 5 + 1 + 7 + 1 + 39 + 1 + 39 + 1 + 5 + 1 + 5 + 2 = 107 chars
+	//
+	//   So a 108-byte buffer is always enough to store all the line and a
+	//   trailing zero for string processing.
+	//
+	// It must also be CRLF terminated, as above. The header does not otherwise
+	// contain a CR or LF byte.
+	//
+	// ISSUE #69
+	// We can't use Peek here as it will block trying to fill the buffer, which
+	// will never happen if the header is TCP4 or TCP6 (max. 56 and 104 bytes
+	// respectively) and the server is expected to speak first.
+	//
+	// Similarly, we can't use ReadString or ReadBytes as these will keep reading
+	// until the delimiter is found; an abusive client could easily disrupt a
+	// server by sending a large amount of data that do not contain a LF byte.
+	// Another means of attack would be to start connections and simply not send
+	// data after the initial PROXY signature bytes, accumulating a large
+	// number of blocked goroutines on the server. ReadSlice will also block for
+	// a delimiter when the internal buffer does not fill up.
+	//
+	// A plain Read is also problematic since we risk reading past the end of the
+	// header without being able to easily put the excess bytes back into the reader's
+	// buffer (with the current implementation's design).
+	//
+	// So we use a ReadByte loop, which solves the overflow problem and avoids
+	// reading beyond the end of the header. However, we need one more trick to harden
+	// against partial header attacks (slow loris) - per spec:
+	//
+	//    (..) The sender must always ensure that the header is sent at once, so that
+	//    the transport layer maintains atomicity along the path to the receiver. The
+	//    receiver may be tolerant to partial headers or may simply drop the connection
+	//    when receiving a partial header. Recommendation is to be tolerant, but
+	//    implementation constraints may not always easily permit this.
+	//
+	// We are subject to such implementation constraints. So we return an error if
+	// the header cannot be fully extracted with a single read of the underlying
+	// reader.
+	buf := make([]byte, 0, 107)
+	for {
+		b, err := reader.ReadByte()
+		if err != nil {
+			return nil, fmt.Errorf(ErrCantReadVersion1Header.Error()+": %v", err)
+		}
+		buf = append(buf, b)
+		if b == '\n' {
+			// End of header found
+			break
+		}
+		if len(buf) == 107 {
+			// No delimiter in first 107 bytes
+			return nil, ErrVersion1HeaderTooLong
+		}
+		if reader.Buffered() == 0 {
+			// Header was not buffered in a single read. Since we can't
+			// differentiate between genuine slow writers and DoS agents,
+			// we abort. On healthy networks, this should never happen.
+			return nil, ErrCantReadVersion1Header
+		}
+	}
+
+	// Check for CR before LF.
+	if len(buf) < 2 || buf[len(buf)-2] != '\r' {
 		return nil, ErrLineMustEndWithCrlf
 	}
-	if !strings.HasSuffix(line, crlf) {
-		return nil, ErrLineMustEndWithCrlf
-	}
+
 	// Check full signature.
-	tokens := strings.Split(line[:len(line)-2], separator)
+	tokens := strings.Split(string(buf[:len(buf)-2]), separator)
 
 	// Expect at least 2 tokens: "PROXY" and the transport protocol.
 	if len(tokens) < 2 {
