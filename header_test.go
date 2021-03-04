@@ -13,11 +13,12 @@ import (
 // Stuff to be used in both versions tests.
 
 const (
-	NO_PROTOCOL  = "There is no spoon"
-	IP4_ADDR     = "127.0.0.1"
-	IP6_ADDR     = "::1"
-	PORT         = 65533
-	INVALID_PORT = 99999
+	NO_PROTOCOL   = "There is no spoon"
+	IP4_ADDR      = "127.0.0.1"
+	IP6_ADDR      = "::1"
+	IP6_LONG_ADDR = "1234:5678:9abc:def0:cafe:babe:dead:2bad"
+	PORT          = 65533
+	INVALID_PORT  = 99999
 )
 
 var (
