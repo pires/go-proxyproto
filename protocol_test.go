@@ -6,6 +6,7 @@ package proxyproto
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"io/ioutil"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestPassthrough(t *testing.T) {
@@ -59,6 +61,42 @@ func TestPassthrough(t *testing.T) {
 	if _, err := conn.Write([]byte("pong")); err != nil {
 		t.Fatalf("err: %v", err)
 	}
+}
+
+func TestReadHeaderTimeout(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	pl := &Listener{
+		Listener:          l,
+		ReadHeaderTimeout: 1 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		defer conn.Close()
+
+		<-ctx.Done()
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer conn.Close()
+
+	// Read blocks forever if there is no ReadHeaderTimeout
+	recv := make([]byte, 4)
+	_, err = conn.Read(recv)
+
 }
 
 func TestParse_ipv4(t *testing.T) {
