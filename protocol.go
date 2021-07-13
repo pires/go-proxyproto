@@ -54,6 +54,8 @@ func (p *Listener) Accept() (net.Conn, error) {
 	}
 
 	if d := p.ReadHeaderTimeout; d != 0 {
+		// The deadline will be reset after parsing the header.
+		// Otherwise, future p.conn.Read() will timeout.
 		conn.SetReadDeadline(time.Now().Add(d))
 	}
 
@@ -106,10 +108,12 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 func (p *Conn) Read(b []byte) (int, error) {
 	p.once.Do(func() {
 		p.readErr = p.readHeader()
+		p.conn.SetReadDeadline(time.Time{})
 	})
 	if p.readErr != nil {
 		return 0, p.readErr
 	}
+
 	return p.bufReader.Read(b)
 }
 

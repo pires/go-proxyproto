@@ -31,7 +31,7 @@ func TestPassthrough(t *testing.T) {
 		conn, err := net.Dial("tcp", pl.Addr().String())
 		if err != nil {
 			t.Fatalf("err: %v", err)
-			}
+		}
 		defer conn.Close()
 
 		conn.Write([]byte("ping"))
@@ -99,7 +99,7 @@ func TestReadHeaderTimeout(t *testing.T) {
 	recv := make([]byte, 4)
 	_, err = conn.Read(recv)
 
-	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded){
+	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Fatal("should timeout")
 	}
 }
@@ -113,7 +113,7 @@ func TestReadHeaderTimeoutIsReset(t *testing.T) {
 	}
 
 	pl := &Listener{
-		Listener: l,
+		Listener:          l,
 		ReadHeaderTimeout: timeout,
 	}
 
