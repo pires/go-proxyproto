@@ -177,7 +177,7 @@ var validParseAndWriteV2Tests = []struct {
 	},
 	{
 		desc:   "local unspec",
-		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), lengthUnspecBytes...)),
+		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), fixtureIPv4V2...)),
 		expectedHeader: &Header{
 			Version:           2,
 			Command:           LOCAL,
