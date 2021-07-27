@@ -120,6 +120,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if _, err := reader.Discard(int(length)); err != nil {
 			return nil, ErrInvalidAddress
 		}
+
 		return header, nil
 	}
 
@@ -180,6 +181,12 @@ func (header *Header) formatVersion2() ([]byte, error) {
 	buf.Write(SIGV2)
 	buf.WriteByte(header.Command.toByte())
 	buf.WriteByte(header.TransportProtocol.toByte())
+
+	if header.Command.IsLocal() {
+		buf.Write([]byte{'\x00', '\x00'})
+		return buf.Bytes(), nil
+	}
+
 	if header.TransportProtocol.IsUnspec() {
 		// For UNSPEC, write no addresses and ports but only TLVs if they are present
 		hdrLen, err := addTLVLen(lengthUnspecBytes, len(header.rawTLVs))

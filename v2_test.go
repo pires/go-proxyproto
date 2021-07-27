@@ -171,13 +171,13 @@ var validParseAndWriteV2Tests = []struct {
 			Version:           2,
 			Command:           LOCAL,
 			TransportProtocol: TCPv4,
-			SourceAddr:        v4addr,
-			DestinationAddr:   v4addr,
+			SourceAddr:        nil,
+			DestinationAddr:   nil,
 		},
 	},
 	{
 		desc:   "local unspec",
-		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), fixtureIPv4V2...)),
+		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), lengthUnspecBytes...)),
 		expectedHeader: &Header{
 			Version:           2,
 			Command:           LOCAL,
@@ -186,6 +186,7 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   nil,
 		},
 	},
+
 	{
 		desc:   "proxy TCPv4",
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2...)),
@@ -232,6 +233,7 @@ var validParseAndWriteV2Tests = []struct {
 			rawTLVs:           fixtureTLV,
 		},
 	},
+
 	{
 		desc:   "local unspec with TLV",
 		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), fixtureUnspecTLV...)),
@@ -241,7 +243,6 @@ var validParseAndWriteV2Tests = []struct {
 			TransportProtocol: UNSPEC,
 			SourceAddr:        nil,
 			DestinationAddr:   nil,
-			rawTLVs:           fixtureTLV,
 		},
 	},
 	{
@@ -480,17 +481,6 @@ var tlvFormatTests = []struct {
 			TransportProtocol: UDPv6,
 			SourceAddr:        v6addr,
 			DestinationAddr:   v6addr,
-			rawTLVs:           make([]byte, 1<<16),
-		},
-	},
-	{
-		desc: "local unspec",
-		header: &Header{
-			Version:           2,
-			Command:           LOCAL,
-			TransportProtocol: UNSPEC,
-			SourceAddr:        nil,
-			DestinationAddr:   nil,
 			rawTLVs:           make([]byte, 1<<16),
 		},
 	},
