@@ -522,6 +522,18 @@ func TestFormatInvalid(t *testing.T) {
 			},
 			err: ErrInvalidAddress,
 		},
+		{
+			name: "v2mismatchProxy_Protocol",
+			header: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: UNSPEC,
+				SourceAddr:        v4UDPAddr,
+				DestinationAddr:   unixStreamAddr,
+				rawTLVs:           make([]byte, 1<<16),
+			},
+			err: errUint16Overflow,
+		},
 	}
 
 	for _, test := range tests {

@@ -111,9 +111,8 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return nil, ErrInvalidLength
 	}
 
-	// if local then we should just skip the rest of the header as per spec
-	// 	When a sender presents a LOCAL connection, it should not present any
-	// address so it sets this field to zero. Receivers MUST always consider
+	// When a sender presents a LOCAL connection, it should not present any address
+	// so it sets this field to zero. Receivers MUST always consider
 	// this field to skip the appropriate number of bytes and must not assume
 	// zero is presented for LOCAL connections.
 	if header.Command.IsLocal() {
