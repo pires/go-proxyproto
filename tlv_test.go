@@ -13,30 +13,6 @@ var (
 	fixturePartialLenTLV = []byte{byte(PP2_TYPE_MIN_CUSTOM) + 3, 0x00, 0x02, 0x00}
 )
 
-func checkTLVs(t *testing.T, name string, raw []byte, expected []PP2Type) []TLV {
-	header, err := parseVersion2(bufio.NewReader(bytes.NewReader(raw)))
-	if err != nil {
-		t.Fatalf("%s: Unexpected error reading header %#v", name, err)
-	}
-
-	tlvs, err := header.TLVs()
-	if err != nil {
-		t.Fatalf("%s: Unexpected error splitting TLVS %#v", name, err)
-	}
-
-	if len(tlvs) != len(expected) {
-		t.Fatalf("%s: Expected %d TLVs, actual %d", name, len(expected), len(tlvs))
-	}
-
-	for i, et := range expected {
-		if at := tlvs[i].Type; at != et {
-			t.Fatalf("%s: Expected type %X, actual %X", name, et, at)
-		}
-	}
-
-	return tlvs
-}
-
 var invalidTLVTests = []struct {
 	name          string
 	reader        *bufio.Reader
