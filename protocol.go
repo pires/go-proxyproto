@@ -8,7 +8,11 @@ import (
 	"time"
 )
 
-var DEFAULT_TIMEOUT = 200 * time.Millisecond
+// DefaultReadHeaderTimeout is how long header processing waits for header to
+// be read from the wire, if Listener.ReaderHeaderTimeout is not set.
+// It's kept as a global variable so to make it easier to find and override,
+// e.g. go build -ldflags -X "github.com/pires/go-proxyproto.DefaultReadHeaderTimeout=1s"
+var DefaultReadHeaderTimeout = 200 * time.Millisecond
 
 // Listener is used to wrap an underlying listener,
 // whose connections may be using the HAProxy Proxy Protocol.
@@ -77,9 +81,9 @@ func (p *Listener) Accept() (net.Conn, error) {
 		ValidateHeader(p.ValidateHeader),
 	)
 
-	// If the ReadHeaderTimeout for the listener is 0, set a default of 200ms
+	// If the ReadHeaderTimeout for the listener is unset, use the default timeout.
 	if p.ReadHeaderTimeout == 0 {
-		p.ReadHeaderTimeout = DEFAULT_TIMEOUT
+		p.ReadHeaderTimeout = DefaultReadHeaderTimeout
 	}
 
 	// Set the readHeaderTimeout of the new conn to the value of the listener
