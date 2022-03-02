@@ -33,7 +33,7 @@ jobs:
       run: go vet
 
     - name: Test
-      run: go test -v -covermode=count -coverprofile=coverage.out
+      run: go test -race -v -covermode=atomic -coverprofile=coverage.out
 
     - name: actions-goveralls
       uses: shogo82148/actions-goveralls@v1.2.2
