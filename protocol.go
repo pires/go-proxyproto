@@ -13,7 +13,7 @@ import (
 // be read from the wire, if Listener.ReaderHeaderTimeout is not set.
 // It's kept as a global variable so to make it easier to find and override,
 // e.g. go build -ldflags -X "github.com/pires/go-proxyproto.DefaultReadHeaderTimeout=1s"
-var DefaultReadHeaderTimeout = 200 * time.Millisecond
+var DefaultReadHeaderTimeout = 10 * time.Second
 
 // Listener is used to wrap an underlying listener,
 // whose connections may be using the HAProxy Proxy Protocol.

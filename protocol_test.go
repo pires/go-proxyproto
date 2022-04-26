@@ -265,6 +265,8 @@ func TestReadHeaderTimeoutIsReset(t *testing.T) {
 // we expect the actual address and port to be returned,
 // rather than the ProxyHeader we defined.
 func TestReadHeaderTimeoutIsEmpty(t *testing.T) {
+	DefaultReadHeaderTimeout = 200 * time.Millisecond
+
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("err: %v", err)
