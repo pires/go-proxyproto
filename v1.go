@@ -192,8 +192,17 @@ func (header *Header) formatVersion1() ([]byte, error) {
 		sourceIP = sourceIP.To16()
 		destIP = destIP.To16()
 	}
+
 	if sourceIP == nil || destIP == nil {
 		return nil, ErrInvalidAddress
+	}
+
+	ipToString := func(ip net.IP) string {
+		if header.TransportProtocol == TCPv6 && ip.To4() != nil {
+			return fmt.Sprintf("::FFFF:%s", ip.String())
+		}
+
+		return ip.String()
 	}
 
 	buf := bytes.NewBuffer(make([]byte, 0, 108))
@@ -201,9 +210,9 @@ func (header *Header) formatVersion1() ([]byte, error) {
 	buf.WriteString(separator)
 	buf.WriteString(proto)
 	buf.WriteString(separator)
-	buf.WriteString(sourceIP.String())
+	buf.WriteString(ipToString(sourceIP))
 	buf.WriteString(separator)
-	buf.WriteString(destIP.String())
+	buf.WriteString(ipToString(destIP))
 	buf.WriteString(separator)
 	buf.WriteString(strconv.Itoa(sourceAddr.Port))
 	buf.WriteString(separator)
@@ -222,15 +231,46 @@ func parseV1PortNumber(portStr string) (int, error) {
 }
 
 func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (net.IP, error) {
-	ip := net.ParseIP(addrStr)
-	switch protocol {
-	case TCPv4:
-		ip = ip.To4()
-	case TCPv6:
-		ip = ip.To16()
-	}
-	if ip == nil {
+
+	addr := net.ParseIP(addrStr)
+	if addr == nil {
 		return nil, ErrInvalidAddress
 	}
-	return ip, nil
+
+	if protocol == TCPv4 && addr.To4() == nil {
+		return nil, ErrInvalidAddress
+	} else if protocol == TCPv4 {
+		return addr, nil
+	}
+
+	if protocol == TCPv6 && !strings.Contains(addr.String(), ".") {
+		return addr, nil
+	}
+
+	// This check is not foolproof, but it's all we can using the net/IP library
+	if protocol == TCPv6 && !strings.Contains(strings.ToLower(addrStr), ":ffff:") {
+		return nil, ErrInvalidAddress
+	}
+
+	if protocol == TCPv6 && isIpv4InIpv6(addr) {
+		return addr, nil
+	}
+
+	return nil, ErrInvalidAddress
+}
+
+func isIpv4InIpv6(ip net.IP) bool {
+	isZeros := func(p net.IP) bool {
+		for i := 0; i < len(p); i++ {
+			if p[i] != 0 {
+				return false
+			}
+		}
+		return true
+	}
+
+	return len(ip) == net.IPv6len &&
+		isZeros(ip[0:10]) &&
+		ip[10] == 0xff &&
+		ip[11] == 0xff
 }

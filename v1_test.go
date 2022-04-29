@@ -16,7 +16,7 @@ var (
 	IPv4AddressesAndInvalidPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(INVALID_PORT), strconv.Itoa(INVALID_PORT)}, separator)
 	IPv6AddressesAndPorts        = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 	IPv6LongAddressesAndPorts    = strings.Join([]string{IP6_LONG_ADDR, IP6_LONG_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
-	TCP6CompatAddressesAndPorts  = strings.Join([]string{IP6_COMPAT_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
+	TCP6CompatAddressesAndPorts  = strings.Join([]string{IP6_COMPAT_ADDR, IP6_COMPAT_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 
 	fixtureTCP4V1 = "PROXY TCP4 " + IPv4AddressesAndPorts + crlf + "GET /"
 	fixtureTCP6V1 = "PROXY TCP6 " + IPv6AddressesAndPorts + crlf + "GET /"
@@ -69,11 +69,11 @@ var invalidParseV1Tests = []struct {
 		reader:        newBufioReader([]byte("PROXY TCP4 " + IPv4AddressesAndPorts)),
 		expectedError: ErrCantReadVersion1Header,
 	},
-	//{
-	//	desc:          "TCP6 with IPv4 addresses",
-	//	reader:        newBufioReader([]byte("PROXY TCP6 " + IPv4AddressesAndPorts + crlf)),
-	//	expectedError: ErrInvalidAddress,
-	//},
+	{
+		desc:          "TCP6 with IPv4 addresses",
+		reader:        newBufioReader([]byte("PROXY TCP6 " + IPv4AddressesAndPorts + crlf)),
+		expectedError: ErrInvalidAddress,
+	},
 	{
 		desc:          "TCP4 with IPv6 addresses",
 		reader:        newBufioReader([]byte("PROXY TCP4 " + IPv6AddressesAndPorts + crlf)),
@@ -158,7 +158,7 @@ var validParseAndWriteV1Tests = []struct {
 			Command:           PROXY,
 			TransportProtocol: TCPv6,
 			SourceAddr:        v6CompatAddr,
-			DestinationAddr:   v6addr,
+			DestinationAddr:   v6CompatAddr,
 		},
 	},
 }
