@@ -13,20 +13,23 @@ import (
 // Stuff to be used in both versions tests.
 
 const (
-	NO_PROTOCOL   = "There is no spoon"
-	IP4_ADDR      = "127.0.0.1"
-	IP6_ADDR      = "::1"
-	IP6_LONG_ADDR = "1234:5678:9abc:def0:cafe:babe:dead:2bad"
-	PORT          = 65533
-	INVALID_PORT  = 99999
+	NO_PROTOCOL     = "There is no spoon"
+	IP4_ADDR        = "127.0.0.1"
+	IP6_ADDR        = "::1"
+	IP6_LONG_ADDR   = "1234:5678:9abc:def0:cafe:babe:dead:2bad"
+	IP6_COMPAT_ADDR = "0:0:0:0:0:ffff:7f00:1"
+	PORT            = 65533
+	INVALID_PORT    = 99999
 )
 
 var (
-	v4ip = net.ParseIP(IP4_ADDR).To4()
-	v6ip = net.ParseIP(IP6_ADDR).To16()
+	v4ip       = net.ParseIP(IP4_ADDR).To4()
+	v6ip       = net.ParseIP(IP6_ADDR).To16()
+	v6CompatIP = net.ParseIP(IP4_ADDR).To16()
 
-	v4addr net.Addr = &net.TCPAddr{IP: v4ip, Port: PORT}
-	v6addr net.Addr = &net.TCPAddr{IP: v6ip, Port: PORT}
+	v4addr       net.Addr = &net.TCPAddr{IP: v4ip, Port: PORT}
+	v6addr       net.Addr = &net.TCPAddr{IP: v6ip, Port: PORT}
+	v6CompatAddr net.Addr = &net.TCPAddr{IP: v6CompatIP, Port: PORT}
 
 	v4UDPAddr net.Addr = &net.UDPAddr{IP: v4ip, Port: PORT}
 	v6UDPAddr net.Addr = &net.UDPAddr{IP: v6ip, Port: PORT}

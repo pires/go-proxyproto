@@ -221,11 +221,16 @@ func parseV1PortNumber(portStr string) (int, error) {
 	return port, nil
 }
 
-func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (addr net.IP, err error) {
-	addr = net.ParseIP(addrStr)
-	tryV4 := addr.To4()
-	if (protocol == TCPv4 && tryV4 == nil) || (protocol == TCPv6 && tryV4 != nil) {
-		err = ErrInvalidAddress
+func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (net.IP, error) {
+	ip := net.ParseIP(addrStr)
+	switch protocol {
+	case TCPv4:
+		ip = ip.To4()
+	case TCPv6:
+		ip = ip.To16()
 	}
-	return
+	if ip == nil {
+		return nil, ErrInvalidAddress
+	}
+	return ip, nil
 }
