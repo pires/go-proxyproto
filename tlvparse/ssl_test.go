@@ -74,8 +74,82 @@ var testCases = []struct {
 				t.Fatalf("TestParseV2TLV %s: Unexpected SSLVersion expected %#v, actual %#v", name, esslVer, asslVer)
 			}
 
+			if _, ok := ssl.SSLCipher(); ok {
+				t.Fatalf("TestParseV2TLV %s: Unexpected SSLCipher", name)
+			}
+
 			if !ssl.Verified() {
 				t.Fatalf("TestParseV2TLV %s: Expected Verified to be true", name)
+			}
+		},
+	},
+	{
+		name: "SSL haproxy cipher",
+		raw: []byte{
+			0x0d, 0x0a, 0x0d, 0x0a,
+			0x00, 0x0d, 0x0a, 0x51,
+			0x55, 0x49, 0x54, 0x0a,
+			0x21, 0x21, 0x00, 0x4f,
+			0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0xff, 0xff,
+			0x0a, 0x01, 0x5b, 0x0e,
+			0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0xff, 0xff,
+			0x0a, 0x01, 0x01, 0x9f,
+			0xf4, 0x7c, 0x01, 0xbb,
+			0x20, 0x00, 0x28, 0x01,
+			0x00, 0x00, 0x00, 0x00,
+			0x21, 0x00, 0x07, 0x54,
+			0x4c, 0x53, 0x76, 0x31,
+			0x2e, 0x33, 0x23, 0x00,
+			0x16, 0x54, 0x4c, 0x53,
+			0x5f, 0x41, 0x45, 0x53,
+			0x5f, 0x32, 0x35, 0x36,
+			0x5f, 0x47, 0x43, 0x4d,
+			0x5f, 0x53, 0x48, 0x41,
+			0x33, 0x38, 0x34,
+		},
+		types: []proxyproto.PP2Type{proxyproto.PP2_TYPE_SSL},
+		valid: func(t *testing.T, name string, tlvs []proxyproto.TLV) {
+			if !IsSSL(tlvs[0]) {
+				t.Fatalf("TestParseV2TLV %s: Expected tlvs[0] to be the SSL type", name)
+			}
+
+			ssl, err := SSL(tlvs[0])
+			if err != nil {
+				t.Fatalf("TestParseV2TLV %s: Unexpected error when parsing SSL %#v", name, err)
+			}
+
+			if !ssl.ClientSSL() {
+				t.Fatalf("TestParseV2TLV %s: Expected ClientSSL() to be true", name)
+			}
+
+			if ssl.ClientCertConn() {
+				t.Fatalf("TestParseV2TLV %s: Expected ClientCertConn() to be false", name)
+			}
+
+			if ssl.ClientCertSess() {
+				t.Fatalf("TestParseV2TLV %s: Expected ClientCertSess() to be false", name)
+			}
+
+			if _, ok := ssl.ClientCN(); ok {
+				t.Fatalf("TestParseV2TLV %s: Expected ClientCN to not exist", name)
+			}
+
+			esslVer := "TLSv1.3"
+			if asslVer, ok := ssl.SSLVersion(); !ok {
+				t.Fatalf("TestParseV2TLV %s: Expected SSLVersion to exist", name)
+			} else if asslVer != esslVer {
+				t.Fatalf("TestParseV2TLV %s: Unexpected SSLVersion expected %#v, actual %#v", name, esslVer, asslVer)
+			}
+
+			esslCipher := "TLS_AES_256_GCM_SHA384"
+			if asslCipher, ok := ssl.SSLCipher(); !ok {
+				t.Fatalf("TestParseV2TLV %s: Expected SSLCipher to exist", name)
+			} else if asslCipher != esslCipher {
+				t.Fatalf("TestParseV2TLV %s: Unexpected SSLCipher expected %#v, actual %#v", name, esslCipher, asslCipher)
 			}
 		},
 	},

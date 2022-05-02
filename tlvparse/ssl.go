@@ -65,6 +65,16 @@ func (s PP2SSL) SSLVersion() (string, bool) {
 	return "", false
 }
 
+// SSLCipher returns the US-ASCII string representation of the used TLS cipher and whether that extension exists.
+func (s PP2SSL) SSLCipher() (string, bool) {
+	for _, tlv := range s.TLV {
+		if tlv.Type == proxyproto.PP2_SUBTYPE_SSL_CIPHER {
+			return string(tlv.Value), true
+		}
+	}
+	return "", false
+}
+
 // Marshal formats the PP2SSL structure as a TLV.
 func (s PP2SSL) Marshal() (proxyproto.TLV, error) {
 	v := make([]byte, 5)
@@ -136,6 +146,14 @@ func SSL(t proxyproto.TLV) (PP2SSL, error) {
 				using the TLV format and the type PP2_SUBTYPE_SSL_CN. E.g. "example.com".
 			*/
 			if len(tlv.Value) == 0 || !utf8.Valid(tlv.Value) {
+				return PP2SSL{}, proxyproto.ErrMalformedTLV
+			}
+		case proxyproto.PP2_SUBTYPE_SSL_CIPHER:
+			/*
+				The second level TLV PP2_SUBTYPE_SSL_CIPHER provides the US-ASCII string name
+				of the used cipher, for example "ECDHE-RSA-AES128-GCM-SHA256".
+			*/
+			if len(tlv.Value) == 0 || !isASCII(tlv.Value) {
 				return PP2SSL{}, proxyproto.ErrMalformedTLV
 			}
 		}
