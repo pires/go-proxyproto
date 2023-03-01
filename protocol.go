@@ -74,6 +74,10 @@ func (p *Listener) Accept() (net.Conn, error) {
 			conn.Close()
 			return nil, err
 		}
+		// Handle a connection as a regular one
+		if proxyHeaderPolicy == SKIP {
+			return conn, nil
+		}
 	}
 
 	newConn := NewConn(

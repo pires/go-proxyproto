@@ -188,3 +188,26 @@ func Test_MustStrictWhiteListPolicyPanicsWithInvalidIpRange(t *testing.T) {
 
 	MustStrictWhiteListPolicy([]string{"20/80"})
 }
+
+func TestSkipProxyHeaderForCIDR(t *testing.T) {
+	_, cidr, _ := net.ParseCIDR("192.0.2.1/24")
+	f := SkipProxyHeaderForCIDR(cidr, REJECT)
+
+	upstream, _ := net.ResolveTCPAddr("tcp", "192.0.2.255:12345")
+	policy, err := f(upstream)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if policy != SKIP {
+		t.Errorf("Expected a SKIP policy for the %s address", upstream)
+	}
+
+	upstream, _ = net.ResolveTCPAddr("tcp", "8.8.8.8:12345")
+	policy, err = f(upstream)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if policy != REJECT {
+		t.Errorf("Expected a REJECT policy for the %s address", upstream)
+	}
+}
