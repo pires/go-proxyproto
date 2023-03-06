@@ -1,3 +1,3 @@
 module github.com/pires/go-proxyproto
 
-go 1.13
+go 1.18

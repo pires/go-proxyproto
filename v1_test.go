@@ -13,12 +13,14 @@ import (
 
 var (
 	IPv4AddressesAndPorts        = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
+	IPv4In6AddressesAndPorts     = strings.Join([]string{IP4IN6_ADDR, IP4IN6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 	IPv4AddressesAndInvalidPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(INVALID_PORT), strconv.Itoa(INVALID_PORT)}, separator)
 	IPv6AddressesAndPorts        = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 	IPv6LongAddressesAndPorts    = strings.Join([]string{IP6_LONG_ADDR, IP6_LONG_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
 
-	fixtureTCP4V1 = "PROXY TCP4 " + IPv4AddressesAndPorts + crlf + "GET /"
-	fixtureTCP6V1 = "PROXY TCP6 " + IPv6AddressesAndPorts + crlf + "GET /"
+	fixtureTCP4V1    = "PROXY TCP4 " + IPv4AddressesAndPorts + crlf + "GET /"
+	fixtureTCP6V1    = "PROXY TCP6 " + IPv6AddressesAndPorts + crlf + "GET /"
+	fixtureTCP4IN6V1 = "PROXY TCP6 " + IPv4In6AddressesAndPorts + crlf + "GET /"
 
 	fixtureTCP6V1Overflow = "PROXY TCP6 " + IPv6LongAddressesAndPorts
 
@@ -67,6 +69,11 @@ var invalidParseV1Tests = []struct {
 		expectedError: ErrCantReadVersion1Header,
 	},
 	{
+		desc:          "invalid IP address",
+		reader:        newBufioReader([]byte("PROXY TCP4 invalid invalid 65533 65533" + crlf)),
+		expectedError: ErrInvalidAddress,
+	},
+	{
 		desc:          "TCP6 with IPv4 addresses",
 		reader:        newBufioReader([]byte("PROXY TCP6 " + IPv4AddressesAndPorts + crlf)),
 		expectedError: ErrInvalidAddress,
@@ -74,6 +81,11 @@ var invalidParseV1Tests = []struct {
 	{
 		desc:          "TCP4 with IPv6 addresses",
 		reader:        newBufioReader([]byte("PROXY TCP4 " + IPv6AddressesAndPorts + crlf)),
+		expectedError: ErrInvalidAddress,
+	},
+	{
+		desc:          "TCP4 with IPv4 mapped addresses",
+		reader:        newBufioReader([]byte("PROXY TCP4 " + IPv4In6AddressesAndPorts + crlf)),
 		expectedError: ErrInvalidAddress,
 	},
 	{
@@ -102,6 +114,7 @@ var validParseAndWriteV1Tests = []struct {
 	desc           string
 	reader         *bufio.Reader
 	expectedHeader *Header
+	skipWrite      bool
 }{
 	{
 		desc:   "TCP4",
@@ -124,6 +137,21 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        v6addr,
 			DestinationAddr:   v6addr,
 		},
+	},
+	{
+		desc:   "TCP4IN6",
+		reader: bufio.NewReader(strings.NewReader(fixtureTCP4IN6V1)),
+		expectedHeader: &Header{
+			Version:           1,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
+		},
+		// we skip write test because net.ParseIP converts ::ffff:127.0.0.1 to v4
+		// instead of preserving the v4 in v6 form, so, after serializing the header,
+		// we end up with v6 protocol and a v4 IP which is invalid
+		skipWrite: true,
 	},
 	{
 		desc:   "unknown",
@@ -165,6 +193,9 @@ func TestParseV1Valid(t *testing.T) {
 
 func TestWriteV1Valid(t *testing.T) {
 	for _, tt := range validParseAndWriteV1Tests {
+		if tt.skipWrite {
+			continue
+		}
 		t.Run(tt.desc, func(t *testing.T) {
 			var b bytes.Buffer
 			w := bufio.NewWriter(&b)
