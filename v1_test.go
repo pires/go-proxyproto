@@ -3,6 +3,8 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -259,10 +261,13 @@ func listen(t *testing.T) *Listener {
 	return &Listener{Listener: l}
 }
 
-func client(t *testing.T, addr, header string, length int, terminate bool, wait time.Duration, done chan struct{}) {
+func client(t *testing.T, addr, header string, length int, terminate bool, wait time.Duration, done chan struct{},
+	result chan error,
+) {
 	c, err := net.Dial("tcp", addr)
 	if err != nil {
-		t.Fatalf("dial: %v", err)
+		result <- fmt.Errorf("dial: %w", err)
+		return
 	}
 	defer c.Close()
 
@@ -281,21 +286,25 @@ func client(t *testing.T, addr, header string, length int, terminate bool, wait 
 
 	n, err := c.Write(buf)
 	if err != nil {
-		t.Fatalf("write: %v", err)
+		result <- fmt.Errorf("write: %w", err)
+		return
 	}
 	if n != len(buf) {
-		t.Fatalf("write; short write")
+		result <- errors.New("write; short write")
+		return
 	}
 
+	close(result)
 	time.Sleep(wait)
 	close(done)
 }
 
 func TestVersion1Overflow(t *testing.T) {
 	done := make(chan struct{})
+	cliResult := make(chan error)
 
 	l := listen(t)
-	go client(t, l.Addr().String(), fixtureTCP6V1Overflow, 10240, true, 10*time.Second, done)
+	go client(t, l.Addr().String(), fixtureTCP6V1Overflow, 10240, true, 10*time.Second, done, cliResult)
 
 	c, err := l.Accept()
 	if err != nil {
@@ -307,14 +316,19 @@ func TestVersion1Overflow(t *testing.T) {
 	if err == nil {
 		t.Fatalf("net.Conn: no error reported for oversized header")
 	}
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
+	}
 }
 
 func TestVersion1SlowLoris(t *testing.T) {
 	done := make(chan struct{})
+	cliResult := make(chan error)
 	timeout := make(chan error)
 
 	l := listen(t)
-	go client(t, l.Addr().String(), fixtureTCP6V1Overflow, 0, false, 10*time.Second, done)
+	go client(t, l.Addr().String(), fixtureTCP6V1Overflow, 0, false, 10*time.Second, done, cliResult)
 
 	c, err := l.Accept()
 	if err != nil {
@@ -335,14 +349,19 @@ func TestVersion1SlowLoris(t *testing.T) {
 			t.Fatalf("net.Conn: no error reported for incomplete header")
 		}
 	}
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
+	}
 }
 
 func TestVersion1SlowLorisOverflow(t *testing.T) {
 	done := make(chan struct{})
+	cliResult := make(chan error)
 	timeout := make(chan error)
 
 	l := listen(t)
-	go client(t, l.Addr().String(), fixtureTCP6V1Overflow, 10240, false, 10*time.Second, done)
+	go client(t, l.Addr().String(), fixtureTCP6V1Overflow, 10240, false, 10*time.Second, done, cliResult)
 
 	c, err := l.Accept()
 	if err != nil {
@@ -362,5 +381,9 @@ func TestVersion1SlowLorisOverflow(t *testing.T) {
 		if err == nil {
 			t.Fatalf("net.Conn: no error reported for incomplete and overflowed header")
 		}
+	}
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
 	}
 }
