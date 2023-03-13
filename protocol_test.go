@@ -923,6 +923,59 @@ func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
 	}
 }
 
+func TestSkipProxyProtocolPolicy(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	policyFunc := func(upstream net.Addr) (Policy, error) { return SKIP, nil }
+
+	pl := &Listener{
+		Listener: l,
+		Policy:   policyFunc,
+	}
+
+	cliResult := make(chan error)
+	ping := []byte("ping")
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			cliResult <- err
+			return
+		}
+		defer conn.Close()
+		conn.Write(ping)
+		close(cliResult)
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer conn.Close()
+
+	_, ok := conn.(*net.TCPConn)
+	if !ok {
+		t.Fatal("err: should be a tcp connection")
+	}
+	_ = conn.LocalAddr()
+	recv := make([]byte, 4)
+	_, err = conn.Read(recv)
+	if err != nil {
+		t.Fatalf("Unexpected read error: %v", err)
+	}
+
+	if !bytes.Equal(ping, recv) {
+		t.Fatalf("Unexpected %s data while expected %s", recv, ping)
+	}
+
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
+	}
+}
+
 func Test_ConnectionCasts(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
