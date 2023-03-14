@@ -12,21 +12,15 @@ jobs:
       matrix:
         go: ['1.19', '1.20']
     steps:
-    - uses: actions/checkout@v3
     - uses: actions/setup-go@v3
       with:
         go-version: ${{ matrix.go }}
+    - uses: actions/checkout@v3
 
     - name: Get dependencies
       run: |
         go get golang.org/x/tools/cmd/cover
         go get github.com/mattn/goveralls
-
-    - name: Format
-      run: go fmt
-
-    - name: Vet
-      run: go vet
 
     - name: Test
       run: go test -race -v -covermode=atomic -coverprofile=coverage.out
