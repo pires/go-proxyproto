@@ -244,7 +244,9 @@ func (p *Conn) readHeader() error {
 	// run on the connection, as we don't want to override the previous
 	// read deadline the user may have used.
 	if p.readHeaderTimeout > 0 {
-		p.conn.SetReadDeadline(time.Now().Add(p.readHeaderTimeout))
+		if err := p.conn.SetReadDeadline(time.Now().Add(p.readHeaderTimeout)); err != nil {
+			return err
+		}
 	}
 
 	header, err := Read(p.bufReader)
@@ -259,7 +261,9 @@ func (p *Conn) readHeader() error {
 		if t == nil {
 			t = time.Time{}
 		}
-		p.conn.SetReadDeadline(t.(time.Time))
+		if err := p.conn.SetReadDeadline(t.(time.Time)); err != nil {
+			return err
+		}
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			err = ErrNoProxyProtocol
 		}
