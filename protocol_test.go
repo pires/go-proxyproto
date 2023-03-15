@@ -34,10 +34,12 @@ func TestPassthrough(t *testing.T) {
 		}
 		defer conn.Close()
 
-		conn.Write([]byte("ping"))
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
 		recv := make([]byte, 4)
-		_, err = conn.Read(recv)
-		if err != nil {
+		if _, err = conn.Read(recv); err != nil {
 			cliResult <- err
 			return
 		}
@@ -169,7 +171,9 @@ func TestUseWithReadHeaderTimeout(t *testing.T) {
 
 			// 2 times the ReadHeaderTimeout because the first timeout
 			// should occur (the one set on the listener) and allow for the second to follow up
-			conn.SetDeadline(time.Now().Add(pl.ReadHeaderTimeout * 2))
+			if err := conn.SetDeadline(time.Now().Add(pl.ReadHeaderTimeout * 2)); err != nil {
+				t.Fatalf("err: %v", err)
+			}
 
 			// Read blocks forever if there is no ReadHeaderTimeout
 			recv := make([]byte, 4)
@@ -223,15 +227,20 @@ func TestReadHeaderTimeoutIsReset(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
 		// Sleep here longer than the configured timeout.
 		time.Sleep(timeout * 2)
 
-		conn.Write([]byte("ping"))
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
 		recv := make([]byte, 4)
-		_, err = conn.Read(recv)
-		if err != nil {
+		if _, err := conn.Read(recv); err != nil {
 			cliResult <- err
 			return
 		}
@@ -249,12 +258,15 @@ func TestReadHeaderTimeoutIsReset(t *testing.T) {
 	defer conn.Close()
 
 	// Set our deadlines higher than our ReadHeaderTimeout
-	conn.SetReadDeadline(time.Now().Add(timeout * 3))
-	conn.SetWriteDeadline(time.Now().Add(timeout * 3))
+	if err := conn.SetReadDeadline(time.Now().Add(timeout * 3)); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if err := conn.SetWriteDeadline(time.Now().Add(timeout * 3)); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != nil {
+	if _, err = conn.Read(recv); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if !bytes.Equal(recv, []byte("ping")) {
@@ -327,9 +339,16 @@ func TestReadHeaderTimeoutIsEmpty(t *testing.T) {
 		time.Sleep(250 * time.Millisecond)
 
 		// Write out the header!
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
-		conn.Write([]byte("ping"))
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
+
 		close(cliResult)
 	}()
 
@@ -340,8 +359,7 @@ func TestReadHeaderTimeoutIsEmpty(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != nil {
+	if _, err = conn.Read(recv); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -400,9 +418,16 @@ func TestReadHeaderTimeoutIsNegative(t *testing.T) {
 		time.Sleep(250 * time.Millisecond)
 
 		// Write out the header!
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
-		conn.Write([]byte("ping"))
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
+
 		close(cliResult)
 	}()
 
@@ -413,8 +438,7 @@ func TestReadHeaderTimeoutIsNegative(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != nil {
+	if _, err = conn.Read(recv); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
@@ -464,12 +488,18 @@ func TestParse_ipv4(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
-		conn.Write([]byte("ping"))
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
+
 		recv := make([]byte, 4)
-		_, err = conn.Read(recv)
-		if err != nil {
+		if _, err = conn.Read(recv); err != nil {
 			cliResult <- err
 			return
 		}
@@ -487,8 +517,7 @@ func TestParse_ipv4(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != nil {
+	if _, err = conn.Read(recv); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if !bytes.Equal(recv, []byte("ping")) {
@@ -550,12 +579,18 @@ func TestParse_ipv6(t *testing.T) {
 		defer conn.Close()
 
 		// Write out the header!
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
-		conn.Write([]byte("ping"))
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
+
 		recv := make([]byte, 4)
-		_, err = conn.Read(recv)
-		if err != nil {
+		if _, err = conn.Read(recv); err != nil {
 			cliResult <- err
 			return
 		}
@@ -573,8 +608,7 @@ func TestParse_ipv6(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != nil {
+	if _, err = conn.Read(recv); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if !bytes.Equal(recv, []byte("ping")) {
@@ -659,7 +693,11 @@ func TestReadingIsRefusedWhenProxyHeaderRequiredButMissing(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		conn.Write([]byte("ping"))
+
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
 
 		close(cliResult)
 	}()
@@ -671,8 +709,7 @@ func TestReadingIsRefusedWhenProxyHeaderRequiredButMissing(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != ErrNoProxyProtocol {
+	if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
 		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
 	}
 	err = <-cliResult
@@ -712,7 +749,10 @@ func TestReadingIsRefusedWhenProxyHeaderPresentButNotAllowed(t *testing.T) {
 				Port: 2000,
 			},
 		}
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
 		close(cliResult)
 	}()
@@ -724,8 +764,7 @@ func TestReadingIsRefusedWhenProxyHeaderPresentButNotAllowed(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != ErrSuperfluousProxyHeader {
+	if _, err = conn.Read(recv); err != ErrSuperfluousProxyHeader {
 		t.Fatalf("Expected error %v, received %v", ErrSuperfluousProxyHeader, err)
 	}
 	err = <-cliResult
@@ -766,12 +805,18 @@ func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {
 				Port: 2000,
 			},
 		}
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
-		conn.Write([]byte("ping"))
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
+
 		recv := make([]byte, 4)
-		_, err = conn.Read(recv)
-		if err != nil {
+		if _, err = conn.Read(recv); err != nil {
 			cliResult <- err
 			return
 		}
@@ -790,8 +835,7 @@ func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != nil {
+	if _, err = conn.Read(recv); err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if !bytes.Equal(recv, []byte("ping")) {
@@ -859,7 +903,11 @@ func TestReadingIsRefusedOnErrorWhenRemoteAddrRequestedFirst(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		conn.Write([]byte("ping"))
+
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
 
 		close(cliResult)
 	}()
@@ -872,8 +920,7 @@ func TestReadingIsRefusedOnErrorWhenRemoteAddrRequestedFirst(t *testing.T) {
 
 	_ = conn.RemoteAddr()
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != ErrNoProxyProtocol {
+	if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
 		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
 	}
 	err = <-cliResult
@@ -900,7 +947,11 @@ func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		conn.Write([]byte("ping"))
+
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
 
 		close(cliResult)
 	}()
@@ -913,8 +964,7 @@ func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
 
 	_ = conn.LocalAddr()
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != ErrNoProxyProtocol {
+	if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
 		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
 	}
 	err = <-cliResult
@@ -945,7 +995,12 @@ func TestSkipProxyProtocolPolicy(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		conn.Write(ping)
+
+		if _, err := conn.Write(ping); err != nil {
+			cliResult <- err
+			return
+		}
+
 		close(cliResult)
 	}()
 
@@ -961,8 +1016,7 @@ func TestSkipProxyProtocolPolicy(t *testing.T) {
 	}
 	_ = conn.LocalAddr()
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != nil {
+	if _, err = conn.Read(recv); err != nil {
 		t.Fatalf("Unexpected read error: %v", err)
 	}
 
@@ -994,7 +1048,11 @@ func Test_ConnectionCasts(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		conn.Write([]byte("ping"))
+
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
 
 		close(cliResult)
 	}()
@@ -1060,7 +1118,10 @@ func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
 				Port: 2000,
 			},
 		}
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
 		close(cliResult)
 	}()
@@ -1072,8 +1133,7 @@ func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 4)
-	_, err = conn.Read(recv)
-	if err != validationError {
+	if _, err = conn.Read(recv); err != validationError {
 		t.Fatalf("expected validation error, got %v", err)
 	}
 	err = <-cliResult
@@ -1167,9 +1227,16 @@ func Test_TLSServer(t *testing.T) {
 				Port: 2000,
 			},
 		}
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
-		conn.Write([]byte("test"))
+		if _, err := conn.Write([]byte("test")); err != nil {
+			cliResult <- err
+			return
+		}
+
 		close(cliResult)
 	}()
 
@@ -1243,9 +1310,15 @@ func Test_MisconfiguredTLSServerRespondsWithUnderlyingError(t *testing.T) {
 				Port: 2000,
 			},
 		}
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
 
-		conn.Write([]byte("GET /foo/bar HTTP/1.1"))
+		if _, err := conn.Write([]byte("GET /foo/bar HTTP/1.1")); err != nil {
+			cliResult <- err
+			return
+		}
 
 		close(cliResult)
 	}()
@@ -1257,8 +1330,7 @@ func Test_MisconfiguredTLSServerRespondsWithUnderlyingError(t *testing.T) {
 	defer conn.Close()
 
 	recv := make([]byte, 1024)
-	_, err = conn.Read(recv)
-	if err.Error() != "tls: first record does not look like a TLS handshake" {
+	if _, err = conn.Read(recv); err.Error() != "tls: first record does not look like a TLS handshake" {
 		t.Fatalf("expected tls handshake error, got %s", err)
 	}
 	err = <-cliResult
@@ -1294,7 +1366,9 @@ func TestCopyToWrappedConnection(t *testing.T) {
 	wrappedConn := NewConn(innerConn)
 	dummySrc := &testConn{reads: 1}
 
-	io.Copy(wrappedConn, dummySrc)
+	if _, err := io.Copy(wrappedConn, dummySrc); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 	if innerConn.readFromCalledWith != dummySrc {
 		t.Error("Expected io.Copy to delegate to ReadFrom function of inner destination connection")
 	}
@@ -1304,7 +1378,9 @@ func TestCopyFromWrappedConnection(t *testing.T) {
 	wrappedConn := NewConn(&testConn{reads: 1})
 	dummyDst := &testConn{}
 
-	io.Copy(dummyDst, wrappedConn)
+	if _, err := io.Copy(dummyDst, wrappedConn); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 	if dummyDst.readFromCalledWith != wrappedConn.conn {
 		t.Errorf("Expected io.Copy to pass inner source connection to ReadFrom method of destination")
 	}
@@ -1316,7 +1392,9 @@ func TestCopyFromWrappedConnectionToWrappedConnection(t *testing.T) {
 	innerConn2 := &testConn{}
 	wrappedConn2 := NewConn(innerConn2)
 
-	io.Copy(wrappedConn1, wrappedConn2)
+	if _, err := io.Copy(wrappedConn1, wrappedConn2); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 	if innerConn1.readFromCalledWith != innerConn2 {
 		t.Errorf("Expected io.Copy to pass inner source connection to ReadFrom of inner destination connection")
 	}
@@ -1336,7 +1414,8 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 				break
 			}
 			_, err = io.Copy(conn, conn)
-			conn.Close()
+			// Can't defer since we keep accepting on each for iteration.
+			_ = conn.Close()
 			if err != nil {
 				panic(fmt.Sprintf("Failed to read entire payload: %v", err))
 			}
@@ -1362,17 +1441,17 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 			}
 			go func() {
 				_, err = io.Copy(bConn, conn)
+				_ = bConn.(*net.TCPConn).CloseWrite()
 				if err != nil {
 					panic(fmt.Sprintf("Failed to proxy incoming data to backend: %v", err))
 				}
-				bConn.(*net.TCPConn).CloseWrite()
 			}()
 			_, err = io.Copy(conn, bConn)
 			if err != nil {
 				panic(fmt.Sprintf("Failed to proxy data from backend: %v", err))
 			}
-			conn.Close()
-			bConn.Close()
+			_ = conn.Close()
+			_ = bConn.Close()
 		}
 	}()
 
@@ -1400,14 +1479,16 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 			b.Fatalf("err: %v", err)
 		}
 		// Write out the header!
-		header.WriteTo(conn)
+		if _, err := header.WriteTo(conn); err != nil {
+			b.Fatalf("err: %v", err)
+		}
 		//send data
 		go func() {
 			_, err = conn.Write(data)
+			_ = conn.(*net.TCPConn).CloseWrite()
 			if err != nil {
 				panic(fmt.Sprintf("Failed to write data: %v", err))
 			}
-			conn.(*net.TCPConn).CloseWrite()
 
 		}()
 		//receive data

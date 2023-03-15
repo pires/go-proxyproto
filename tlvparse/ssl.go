@@ -11,8 +11,8 @@ import (
 const (
 	// pp2_tlv_ssl.client  bit fields
 	PP2_BITFIELD_CLIENT_SSL       uint8 = 0x01
-	PP2_BITFIELD_CLIENT_CERT_CONN       = 0x02
-	PP2_BITFIELD_CLIENT_CERT_SESS       = 0x04
+	PP2_BITFIELD_CLIENT_CERT_CONN uint8 = 0x02
+	PP2_BITFIELD_CLIENT_CERT_SESS uint8 = 0x04
 
 	tlvSSLMinLen = 5 // len(pp2_tlv_ssl.client) + len(pp2_tlv_ssl.verify)
 )
