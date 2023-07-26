@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/pires/go-proxyproto"
+	h2proxy "github.com/pires/go-proxyproto/helper/http2"
 )
 
 // TODO: add httpclient example
@@ -35,5 +36,8 @@ func main() {
 	}
 	defer proxyListener.Close()
 
-	server.Serve(proxyListener)
+	// Create an HTTP server which can handle proxied incoming connections for
+	// both HTTP/1 and HTTP/2. HTTP/2 support relies on TLS ALPN, the reverse
+	// proxy needs to be configured to accept "h2".
+	h2proxy.NewServer(&server, nil).Serve(proxyListener)
 }
