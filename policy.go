@@ -6,13 +6,14 @@ import (
 	"strings"
 )
 
-// PolicyFunc can be used to decide whether to trust the PROXY info from
-// upstream. If set, the connecting address is passed in as an argument.
+// PolicyFunc can be used to decide whether to trust the PROXY info based on
+// upstream/downstream IP. If set, the connecting addresses(remote and local)
+// are passed in as arguments.
 //
 // See below for the different policies.
 //
 // In case an error is returned the connection is denied.
-type PolicyFunc func(upstream net.Addr) (Policy, error)
+type PolicyFunc func(upstream net.Addr, downstream net.Addr) (Policy, error)
 
 // Policy defines how a connection with a PROXY header address is treated.
 type Policy int
@@ -43,7 +44,7 @@ const (
 // Kubernetes pods local traffic. The def is a policy to use when an upstream
 // address doesn't match the skipHeaderCIDR.
 func SkipProxyHeaderForCIDR(skipHeaderCIDR *net.IPNet, def Policy) PolicyFunc {
-	return func(upstream net.Addr) (Policy, error) {
+	return func(upstream net.Addr, downstream net.Addr) (Policy, error) {
 		ip, err := ipFromAddr(upstream)
 		if err != nil {
 			return def, err
@@ -54,6 +55,25 @@ func SkipProxyHeaderForCIDR(skipHeaderCIDR *net.IPNet, def Policy) PolicyFunc {
 		}
 
 		return def, nil
+	}
+}
+
+// IgnoreProxyHeaderNotOnInterface retuns a PolicyFunc which can be used to
+// decide whether to use or ignore PROXY headers depending on the connection
+// being made on a specific interface. This policy can be used when the server
+// is bound to multiple interfaces but wants to allow on only one interface.
+func IgnoreProxyHeaderNotOnInterface(allowedIP net.IP) PolicyFunc {
+	return func(upstream net.Addr, downstream net.Addr) (Policy, error) {
+		ip, err := ipFromAddr(downstream)
+		if err != nil {
+			return REJECT, err
+		}
+
+		if allowedIP.Equal(ip) {
+			return USE, nil
+		}
+
+		return IGNORE, nil
 	}
 }
 
@@ -117,7 +137,7 @@ func MustStrictWhiteListPolicy(allowed []string) PolicyFunc {
 }
 
 func whitelistPolicy(allowed []func(net.IP) bool, def Policy) PolicyFunc {
-	return func(upstream net.Addr) (Policy, error) {
+	return func(upstream net.Addr, downstream net.Addr) (Policy, error) {
 		upstreamIP, err := ipFromAddr(upstream)
 		if err != nil {
 			// something is wrong with the source IP, better reject the connection

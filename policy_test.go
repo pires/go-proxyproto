@@ -21,7 +21,7 @@ func TestWhitelistPolicyReturnsErrorOnInvalidAddress(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.policy(failingAddr{})
+			_, err := tc.policy(failingAddr{}, nil)
 			if err == nil {
 				t.Fatal("Expected error, got none")
 			}
@@ -37,7 +37,7 @@ func TestStrictWhitelistPolicyReturnsRejectWhenUpstreamIpAddrNotInWhitelist(t *t
 		t.Fatalf("err: %v", err)
 	}
 
-	policy, err := p(upstream)
+	policy, err := p(upstream, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestLaxWhitelistPolicyReturnsIgnoreWhenUpstreamIpAddrNotInWhitelist(t *test
 		t.Fatalf("err: %v", err)
 	}
 
-	policy, err := p(upstream)
+	policy, err := p(upstream, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestWhitelistPolicyReturnsUseWhenUpstreamIpAddrInWhitelist(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			policy, err := tc.policy(upstream)
+			policy, err := tc.policy(upstream, nil)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -109,7 +109,7 @@ func TestWhitelistPolicyReturnsUseWhenUpstreamIpAddrInWhitelistRange(t *testing.
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			policy, err := tc.policy(upstream)
+			policy, err := tc.policy(upstream, nil)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -194,7 +194,7 @@ func TestSkipProxyHeaderForCIDR(t *testing.T) {
 	f := SkipProxyHeaderForCIDR(cidr, REJECT)
 
 	upstream, _ := net.ResolveTCPAddr("tcp", "192.0.2.255:12345")
-	policy, err := f(upstream)
+	policy, err := f(upstream, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -203,11 +203,47 @@ func TestSkipProxyHeaderForCIDR(t *testing.T) {
 	}
 
 	upstream, _ = net.ResolveTCPAddr("tcp", "8.8.8.8:12345")
-	policy, err = f(upstream)
+	policy, err = f(upstream, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if policy != REJECT {
 		t.Errorf("Expected a REJECT policy for the %s address", upstream)
 	}
+}
+
+func TestIgnoreProxyHeaderNotOnInterface(t *testing.T) {
+	downstream, err := net.ResolveTCPAddr("tcp", "10.0.0.3:45738")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	var cases = []struct {
+		name              string
+		policy            PolicyFunc
+		downstreamAddress net.Addr
+		expectedPolicy    Policy
+		expectError       bool
+	}{
+		{"ignore header for requests non on interface", IgnoreProxyHeaderNotOnInterface(net.ParseIP("192.0.2.1")), downstream, IGNORE, false},
+		{"use headers for requests on interface", IgnoreProxyHeaderNotOnInterface(net.ParseIP("10.0.0.3")), downstream, USE, false},
+		{"invalid address should return error", IgnoreProxyHeaderNotOnInterface(net.ParseIP("10.0.0.3")), failingAddr{}, REJECT, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			policy, err := tc.policy(nil, tc.downstreamAddress)
+			if !tc.expectError && err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if tc.expectError && err == nil {
+				t.Fatal("Expected error, got none")
+			}
+
+			if policy != tc.expectedPolicy {
+				t.Fatalf("Expected policy %v, got %v", tc.expectedPolicy, policy)
+			}
+		})
+	}
+
 }

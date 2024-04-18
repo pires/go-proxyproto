@@ -68,7 +68,7 @@ func (p *Listener) Accept() (net.Conn, error) {
 
 	proxyHeaderPolicy := USE
 	if p.Policy != nil {
-		proxyHeaderPolicy, err = p.Policy(conn.RemoteAddr())
+		proxyHeaderPolicy, err = p.Policy(conn.RemoteAddr(), conn.LocalAddr())
 		if err != nil {
 			// can't decide the policy, we can't accept the connection
 			conn.Close()
