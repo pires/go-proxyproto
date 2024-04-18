@@ -91,7 +91,7 @@ func TestRequiredWithReadHeaderTimeout(t *testing.T) {
 			pl := &Listener{
 				Listener:          l,
 				ReadHeaderTimeout: time.Millisecond * time.Duration(duration),
-				Policy: func(upstream net.Addr) (Policy, error) {
+				Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
 					return REQUIRE, nil
 				},
 			}
@@ -146,7 +146,7 @@ func TestUseWithReadHeaderTimeout(t *testing.T) {
 			pl := &Listener{
 				Listener:          l,
 				ReadHeaderTimeout: time.Millisecond * time.Duration(duration),
-				Policy: func(upstream net.Addr) (Policy, error) {
+				Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
 					return USE, nil
 				},
 			}
@@ -645,7 +645,7 @@ func TestAcceptReturnsErrorWhenPolicyFuncErrors(t *testing.T) {
 	}
 
 	expectedErr := fmt.Errorf("failure")
-	policyFunc := func(upstream net.Addr) (Policy, error) { return USE, expectedErr }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return USE, expectedErr }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -681,7 +681,7 @@ func TestReadingIsRefusedWhenProxyHeaderRequiredButMissing(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -724,7 +724,7 @@ func TestReadingIsRefusedWhenProxyHeaderPresentButNotAllowed(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr) (Policy, error) { return REJECT, nil }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REJECT, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -778,7 +778,7 @@ func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr) (Policy, error) { return IGNORE, nil }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return IGNORE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -891,7 +891,7 @@ func TestReadingIsRefusedOnErrorWhenRemoteAddrRequestedFirst(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -935,7 +935,7 @@ func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -979,7 +979,7 @@ func TestSkipProxyProtocolPolicy(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr) (Policy, error) { return SKIP, nil }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return SKIP, nil }
 
 	pl := &Listener{
 		Listener: l,
@@ -1036,7 +1036,7 @@ func Test_ConnectionCasts(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -1198,7 +1198,7 @@ func Test_TLSServer(t *testing.T) {
 	s := NewTestTLSServer(l)
 	s.Listener = &Listener{
 		Listener: s.Listener,
-		Policy: func(upstream net.Addr) (Policy, error) {
+		Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
 			return REQUIRE, nil
 		},
 	}
@@ -1269,7 +1269,7 @@ func Test_MisconfiguredTLSServerRespondsWithUnderlyingError(t *testing.T) {
 	s := NewTestTLSServer(l)
 	s.Listener = &Listener{
 		Listener: s.Listener,
-		Policy: func(upstream net.Addr) (Policy, error) {
+		Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
 			return REQUIRE, nil
 		},
 	}
