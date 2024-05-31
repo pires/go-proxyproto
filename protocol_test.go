@@ -91,7 +91,7 @@ func TestRequiredWithReadHeaderTimeout(t *testing.T) {
 			pl := &Listener{
 				Listener:          l,
 				ReadHeaderTimeout: time.Millisecond * time.Duration(duration),
-				Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
+				Policy: func(upstream net.Addr) (Policy, error) {
 					return REQUIRE, nil
 				},
 			}
@@ -146,7 +146,7 @@ func TestUseWithReadHeaderTimeout(t *testing.T) {
 			pl := &Listener{
 				Listener:          l,
 				ReadHeaderTimeout: time.Millisecond * time.Duration(duration),
-				Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
+				Policy: func(upstream net.Addr) (Policy, error) {
 					return USE, nil
 				},
 			}
@@ -645,9 +645,78 @@ func TestAcceptReturnsErrorWhenPolicyFuncErrors(t *testing.T) {
 	}
 
 	expectedErr := fmt.Errorf("failure")
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return USE, expectedErr }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return USE, expectedErr }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
+
+	cliResult := make(chan error)
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			cliResult <- err
+			return
+		}
+		defer conn.Close()
+
+		close(cliResult)
+	}()
+
+	conn, err := pl.Accept()
+	if err != expectedErr {
+		t.Fatalf("Expected error %v, got %v", expectedErr, err)
+	}
+
+	if conn != nil {
+		t.Fatalf("Expected no connection, got %v", conn)
+	}
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
+	}
+}
+
+func TestPanicIfPolicyAndConnPolicySet(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	connPolicyFunc := func(connopts ConnPolicyOptions) (Policy, error) { return USE, nil }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return USE, nil }
+
+	pl := &Listener{Listener: l, ConnPolicy: connPolicyFunc, Policy: policyFunc}
+
+	cliResult := make(chan error)
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			cliResult <- err
+			return
+		}
+		defer conn.Close()
+
+		close(cliResult)
+	}()
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("accept did panic as expected with error, %v", r)
+		}
+	}()
+	pl.Accept()
+	t.Fatalf("expected the accept to panic but did not")
+}
+
+func TestAcceptReturnsErrorWhenConnPolicyFuncErrors(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	expectedErr := fmt.Errorf("failure")
+	connPolicyFunc := func(connopts ConnPolicyOptions) (Policy, error) { return USE, expectedErr }
+
+	pl := &Listener{Listener: l, ConnPolicy: connPolicyFunc}
 
 	cliResult := make(chan error)
 	go func() {
@@ -681,7 +750,7 @@ func TestReadingIsRefusedWhenProxyHeaderRequiredButMissing(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -724,7 +793,7 @@ func TestReadingIsRefusedWhenProxyHeaderPresentButNotAllowed(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REJECT, nil }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REJECT, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -778,7 +847,7 @@ func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return IGNORE, nil }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return IGNORE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -891,7 +960,7 @@ func TestReadingIsRefusedOnErrorWhenRemoteAddrRequestedFirst(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -935,7 +1004,7 @@ func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -979,7 +1048,64 @@ func TestSkipProxyProtocolPolicy(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return SKIP, nil }
+	connPolicyFunc := func(connopts ConnPolicyOptions) (Policy, error) { return SKIP, nil }
+
+	pl := &Listener{
+		Listener:   l,
+		ConnPolicy: connPolicyFunc,
+	}
+
+	cliResult := make(chan error)
+	ping := []byte("ping")
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			cliResult <- err
+			return
+		}
+		defer conn.Close()
+
+		if _, err := conn.Write(ping); err != nil {
+			cliResult <- err
+			return
+		}
+
+		close(cliResult)
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	defer conn.Close()
+
+	_, ok := conn.(*net.TCPConn)
+	if !ok {
+		t.Fatal("err: should be a tcp connection")
+	}
+	_ = conn.LocalAddr()
+	recv := make([]byte, 4)
+	if _, err = conn.Read(recv); err != nil {
+		t.Fatalf("Unexpected read error: %v", err)
+	}
+
+	if !bytes.Equal(ping, recv) {
+		t.Fatalf("Unexpected %s data while expected %s", recv, ping)
+	}
+
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
+	}
+}
+
+func TestSkipProxyProtocolConnPolicy(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	policyFunc := func(upstream net.Addr) (Policy, error) { return SKIP, nil }
 
 	pl := &Listener{
 		Listener: l,
@@ -1036,7 +1162,7 @@ func Test_ConnectionCasts(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	policyFunc := func(upstream net.Addr, downstream net.Addr) (Policy, error) { return REQUIRE, nil }
+	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
 
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
@@ -1198,7 +1324,7 @@ func Test_TLSServer(t *testing.T) {
 	s := NewTestTLSServer(l)
 	s.Listener = &Listener{
 		Listener: s.Listener,
-		Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
+		Policy: func(upstream net.Addr) (Policy, error) {
 			return REQUIRE, nil
 		},
 	}
@@ -1269,7 +1395,7 @@ func Test_MisconfiguredTLSServerRespondsWithUnderlyingError(t *testing.T) {
 	s := NewTestTLSServer(l)
 	s.Listener = &Listener{
 		Listener: s.Listener,
-		Policy: func(upstream net.Addr, downstream net.Addr) (Policy, error) {
+		Policy: func(upstream net.Addr) (Policy, error) {
 			return REQUIRE, nil
 		},
 	}

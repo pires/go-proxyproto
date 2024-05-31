@@ -22,9 +22,13 @@ var DefaultReadHeaderTimeout = 10 * time.Second
 // connections in order to prevent blocking operations. If no ReadHeaderTimeout
 // is set, a default of 200ms will be used. This can be disabled by setting the
 // timeout to < 0.
+//
+// Only one of Policy or ConnPolicy should be provided. If both are provided then
+// a panic would occur during accept.
 type Listener struct {
 	Listener          net.Listener
 	Policy            PolicyFunc
+	ConnPolicy        ConnPolicyFunc
 	ValidateHeader    Validator
 	ReadHeaderTimeout time.Duration
 }
@@ -67,8 +71,18 @@ func (p *Listener) Accept() (net.Conn, error) {
 	}
 
 	proxyHeaderPolicy := USE
-	if p.Policy != nil {
-		proxyHeaderPolicy, err = p.Policy(conn.RemoteAddr(), conn.LocalAddr())
+	if p.Policy != nil && p.ConnPolicy != nil {
+		panic("only one of policy or connpolicy must be provided.")
+	}
+	if p.Policy != nil || p.ConnPolicy != nil {
+		if p.Policy != nil {
+			proxyHeaderPolicy, err = p.Policy(conn.RemoteAddr())
+		} else {
+			proxyHeaderPolicy, err = p.ConnPolicy(ConnPolicyOptions{
+				Upstream:   conn.RemoteAddr(),
+				Downstream: conn.LocalAddr(),
+			})
+		}
 		if err != nil {
 			// can't decide the policy, we can't accept the connection
 			conn.Close()

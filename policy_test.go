@@ -21,7 +21,7 @@ func TestWhitelistPolicyReturnsErrorOnInvalidAddress(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := tc.policy(failingAddr{}, nil)
+			_, err := tc.policy(failingAddr{})
 			if err == nil {
 				t.Fatal("Expected error, got none")
 			}
@@ -37,7 +37,7 @@ func TestStrictWhitelistPolicyReturnsRejectWhenUpstreamIpAddrNotInWhitelist(t *t
 		t.Fatalf("err: %v", err)
 	}
 
-	policy, err := p(upstream, nil)
+	policy, err := p(upstream)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestLaxWhitelistPolicyReturnsIgnoreWhenUpstreamIpAddrNotInWhitelist(t *test
 		t.Fatalf("err: %v", err)
 	}
 
-	policy, err := p(upstream, nil)
+	policy, err := p(upstream)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestWhitelistPolicyReturnsUseWhenUpstreamIpAddrInWhitelist(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			policy, err := tc.policy(upstream, nil)
+			policy, err := tc.policy(upstream)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -109,7 +109,7 @@ func TestWhitelistPolicyReturnsUseWhenUpstreamIpAddrInWhitelistRange(t *testing.
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			policy, err := tc.policy(upstream, nil)
+			policy, err := tc.policy(upstream)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -194,7 +194,7 @@ func TestSkipProxyHeaderForCIDR(t *testing.T) {
 	f := SkipProxyHeaderForCIDR(cidr, REJECT)
 
 	upstream, _ := net.ResolveTCPAddr("tcp", "192.0.2.255:12345")
-	policy, err := f(upstream, nil)
+	policy, err := f(upstream)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestSkipProxyHeaderForCIDR(t *testing.T) {
 	}
 
 	upstream, _ = net.ResolveTCPAddr("tcp", "8.8.8.8:12345")
-	policy, err = f(upstream, nil)
+	policy, err = f(upstream)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestIgnoreProxyHeaderNotOnInterface(t *testing.T) {
 
 	var cases = []struct {
 		name              string
-		policy            PolicyFunc
+		policy            ConnPolicyFunc
 		downstreamAddress net.Addr
 		expectedPolicy    Policy
 		expectError       bool
@@ -232,7 +232,9 @@ func TestIgnoreProxyHeaderNotOnInterface(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			policy, err := tc.policy(nil, tc.downstreamAddress)
+			policy, err := tc.policy(ConnPolicyOptions{
+				Downstream: tc.downstreamAddress,
+			})
 			if !tc.expectError && err != nil {
 				t.Fatalf("err: %v", err)
 			}
