@@ -703,7 +703,14 @@ func TestPanicIfPolicyAndConnPolicySet(t *testing.T) {
 			fmt.Printf("accept did panic as expected with error, %v", r)
 		}
 	}()
-	pl.Accept()
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("Expected the accept to panic but did not and error is returned, got %v", err)
+	}
+
+	if conn != nil {
+		t.Fatalf("xpected the accept to panic but did not, got %v", conn)
+	}
 	t.Fatalf("expected the accept to panic but did not")
 }
 
