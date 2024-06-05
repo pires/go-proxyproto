@@ -26,7 +26,8 @@ var DefaultReadHeaderTimeout = 10 * time.Second
 // Only one of Policy or ConnPolicy should be provided. If both are provided then
 // a panic would occur during accept.
 type Listener struct {
-	Listener          net.Listener
+	Listener net.Listener
+	// Deprecated: use ConnPolicyFunc instead. This will be removed in future release.
 	Policy            PolicyFunc
 	ConnPolicy        ConnPolicyFunc
 	ValidateHeader    Validator
