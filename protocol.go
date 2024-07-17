@@ -63,6 +63,15 @@ func ValidateHeader(v Validator) func(*Conn) {
 	}
 }
 
+// SetReadHeaderTimeout sets the readHeaderTimeout for a connection when passed as option to NewConn()
+func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
+	return func(c *Conn) {
+		if t >= 0 {
+			c.readHeaderTimeout = t
+		}
+	}
+}
+
 // Accept waits for and returns the next connection to the listener.
 func (p *Listener) Accept() (net.Conn, error) {
 	// Get the underlying connection
