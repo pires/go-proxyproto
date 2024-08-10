@@ -752,100 +752,108 @@ func TestAcceptReturnsErrorWhenConnPolicyFuncErrors(t *testing.T) {
 }
 
 func TestReadingIsRefusedWhenProxyHeaderRequiredButMissing(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("err: %v", err)
+	policyFuncs := []PolicyFunc{
+		func(upstream net.Addr) (Policy, error) { return REQUIRE, nil },
+		func(upstream net.Addr) (Policy, error) { return REFUSE, nil },
 	}
-
-	policyFunc := func(upstream net.Addr) (Policy, error) { return REQUIRE, nil }
-
-	pl := &Listener{Listener: l, Policy: policyFunc}
-
-	cliResult := make(chan error)
-	go func() {
-		conn, err := net.Dial("tcp", pl.Addr().String())
+	for _, policyFunc := range policyFuncs {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			cliResult <- err
-			return
+			t.Fatalf("err: %v", err)
+		}
+
+		pl := &Listener{Listener: l, Policy: policyFunc}
+
+		cliResult := make(chan error)
+		go func() {
+			conn, err := net.Dial("tcp", pl.Addr().String())
+			if err != nil {
+				cliResult <- err
+				return
+			}
+			defer conn.Close()
+
+			if _, err := conn.Write([]byte("ping")); err != nil {
+				cliResult <- err
+				return
+			}
+
+			close(cliResult)
+		}()
+
+		conn, err := pl.Accept()
+		if err != nil {
+			t.Fatalf("err: %v", err)
 		}
 		defer conn.Close()
 
-		if _, err := conn.Write([]byte("ping")); err != nil {
-			cliResult <- err
-			return
+		recv := make([]byte, 4)
+		if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
+			t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
 		}
-
-		close(cliResult)
-	}()
-
-	conn, err := pl.Accept()
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	defer conn.Close()
-
-	recv := make([]byte, 4)
-	if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
-		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
-	}
-	err = <-cliResult
-	if err != nil {
-		t.Fatalf("client error: %v", err)
+		err = <-cliResult
+		if err != nil {
+			t.Fatalf("client error: %v", err)
+		}
 	}
 }
 
 func TestReadingIsRefusedWhenProxyHeaderPresentButNotAllowed(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("err: %v", err)
+	policyFuncs := []PolicyFunc{
+		func(upstream net.Addr) (Policy, error) { return REJECT, nil },
+		func(upstream net.Addr) (Policy, error) { return REFUSE, nil },
 	}
-
-	policyFunc := func(upstream net.Addr) (Policy, error) { return REJECT, nil }
-
-	pl := &Listener{Listener: l, Policy: policyFunc}
-
-	cliResult := make(chan error)
-	go func() {
-		conn, err := net.Dial("tcp", pl.Addr().String())
+	for _, policyFunc := range policyFuncs {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
-			cliResult <- err
-			return
+			t.Fatalf("err: %v", err)
+		}
+
+		pl := &Listener{Listener: l, Policy: policyFunc}
+
+		cliResult := make(chan error)
+		go func() {
+			conn, err := net.Dial("tcp", pl.Addr().String())
+			if err != nil {
+				cliResult <- err
+				return
+			}
+			defer conn.Close()
+			header := &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: TCPv4,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP("10.1.1.1"),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("20.2.2.2"),
+					Port: 2000,
+				},
+			}
+			if _, err := header.WriteTo(conn); err != nil {
+				cliResult <- err
+				return
+			}
+
+			close(cliResult)
+		}()
+
+		conn, err := pl.Accept()
+		if err != nil {
+			t.Fatalf("err: %v", err)
 		}
 		defer conn.Close()
-		header := &Header{
-			Version:           2,
-			Command:           PROXY,
-			TransportProtocol: TCPv4,
-			SourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
-				Port: 1000,
-			},
-			DestinationAddr: &net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
-				Port: 2000,
-			},
+
+		recv := make([]byte, 4)
+		if _, err = conn.Read(recv); err != ErrSuperfluousProxyHeader {
+			t.Fatalf("Expected error %v, received %v", ErrSuperfluousProxyHeader, err)
 		}
-		if _, err := header.WriteTo(conn); err != nil {
-			cliResult <- err
-			return
+		err = <-cliResult
+		if err != nil {
+			t.Fatalf("client error: %v", err)
 		}
-
-		close(cliResult)
-	}()
-
-	conn, err := pl.Accept()
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	defer conn.Close()
-
-	recv := make([]byte, 4)
-	if _, err = conn.Read(recv); err != ErrSuperfluousProxyHeader {
-		t.Fatalf("Expected error %v, received %v", ErrSuperfluousProxyHeader, err)
-	}
-	err = <-cliResult
-	if err != nil {
-		t.Fatalf("client error: %v", err)
 	}
 }
 func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {

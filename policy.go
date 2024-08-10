@@ -51,6 +51,9 @@ const (
 	// Note: an example usage can be found in the SkipProxyHeaderForCIDR
 	// function.
 	SKIP
+	// REFUSE is the same as REJECT if a proxy header is set and the same as
+	// REQUIRE if a proxy header is not set.
+	REFUSE
 )
 
 // SkipProxyHeaderForCIDR returns a PolicyFunc which can be used to accept a
@@ -117,7 +120,7 @@ func StrictWhiteListPolicy(allowed []string) (PolicyFunc, error) {
 		return nil, err
 	}
 
-	return whitelistPolicy(allowFrom, REJECT), nil
+	return whitelistPolicy(allowFrom, REFUSE), nil
 }
 
 // MustStrictWhiteListPolicy returns a StrictWhiteListPolicy but will panic

@@ -288,7 +288,7 @@ func (p *Conn) readHeader() error {
 	// let's act as if there was no error when PROXY protocol is not present.
 	if err == ErrNoProxyProtocol {
 		// but not if it is required that the connection has one
-		if p.ProxyHeaderPolicy == REQUIRE {
+		if p.ProxyHeaderPolicy == REQUIRE || p.ProxyHeaderPolicy == REFUSE {
 			return err
 		}
 
@@ -298,7 +298,7 @@ func (p *Conn) readHeader() error {
 	// proxy protocol header was found
 	if err == nil && header != nil {
 		switch p.ProxyHeaderPolicy {
-		case REJECT:
+		case REJECT, REFUSE:
 			// this connection is not allowed to send one
 			return ErrSuperfluousProxyHeader
 		case USE, REQUIRE:

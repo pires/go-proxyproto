@@ -42,8 +42,8 @@ func TestStrictWhitelistPolicyReturnsRejectWhenUpstreamIpAddrNotInWhitelist(t *t
 		t.Fatalf("err: %v", err)
 	}
 
-	if policy != REJECT {
-		t.Fatalf("Expected policy REJECT, got %v", policy)
+	if policy != REFUSE {
+		t.Fatalf("Expected policy REFUSE, got %v", policy)
 	}
 }
 
