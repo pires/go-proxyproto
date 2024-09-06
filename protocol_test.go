@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -82,7 +83,6 @@ func TestRequiredWithReadHeaderTimeout(t *testing.T) {
 			start := time.Now()
 
 			l, err := net.Listen("tcp", "127.0.0.1:0")
-
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -137,7 +137,6 @@ func TestUseWithReadHeaderTimeout(t *testing.T) {
 			start := time.Now()
 
 			l, err := net.Listen("tcp", "127.0.0.1:0")
-
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -847,6 +846,7 @@ func TestReadingIsRefusedWhenProxyHeaderPresentButNotAllowed(t *testing.T) {
 		t.Fatalf("client error: %v", err)
 	}
 }
+
 func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1274,6 +1274,48 @@ func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
 	}
 }
 
+func Test_ConnectionHandlesInvalidUpstreamError(t *testing.T) {
+	l, err := net.Listen("tcp", "localhost:8080")
+	if err != nil {
+		t.Fatalf("error creating listener: %v", err)
+	}
+
+	times := 0
+
+	newLn := &Listener{
+		Listener: l,
+		ConnPolicy: func(_ ConnPolicyOptions) (Policy, error) {
+			// Return the invalid upstream error on the first call, the listener
+			// should remain open and accepting.
+			if times == 0 {
+				times++
+				return REJECT, ErrInvalidUpstream
+			}
+
+			return REJECT, ErrNoProxyProtocol
+		},
+	}
+
+	// Kick off the listener and capture any error.
+	var listenerErr error
+	go func(t *testing.T) {
+		_, listenerErr = newLn.Accept()
+	}(t)
+
+	// Make two calls to trigger the listener's accept, the first should experience
+	// the ErrInvalidUpstream and keep the listener open, the second should experience
+	// a different error which will cause the listener to close.
+	_, _ = http.Get("http://localhost:8080")
+	if listenerErr != nil {
+		t.Fatalf("invalid upstream shouldn't return an error: %v", listenerErr)
+	}
+
+	_, _ = http.Get("http://localhost:8080")
+	if listenerErr == nil {
+		t.Fatalf("errors other than invalid upstream should error")
+	}
+}
+
 type TestTLSServer struct {
 	Listener net.Listener
 
@@ -1482,9 +1524,11 @@ func (c *testConn) ReadFrom(r io.Reader) (int64, error) {
 	b, err := io.ReadAll(r)
 	return int64(len(b)), err
 }
+
 func (c *testConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
+
 func (c *testConn) Read(p []byte) (int, error) {
 	if c.reads == 0 {
 		return 0, io.EOF
@@ -1533,7 +1577,7 @@ func TestCopyFromWrappedConnectionToWrappedConnection(t *testing.T) {
 }
 
 func benchmarkTCPProxy(size int, b *testing.B) {
-	//create and start the echo backend
+	// create and start the echo backend
 	backend, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		b.Fatalf("err: %v", err)
@@ -1554,7 +1598,7 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 		}
 	}()
 
-	//start the proxyprotocol enabled tcp proxy
+	// start the proxyprotocol enabled tcp proxy
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		b.Fatalf("err: %v", err)
@@ -1603,7 +1647,7 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 		},
 	}
 
-	//now for the actual benchmark
+	// now for the actual benchmark
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		conn, err := net.Dial("tcp", pl.Addr().String())
@@ -1614,16 +1658,15 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 		if _, err := header.WriteTo(conn); err != nil {
 			b.Fatalf("err: %v", err)
 		}
-		//send data
+		// send data
 		go func() {
 			_, err = conn.Write(data)
 			_ = conn.(*net.TCPConn).CloseWrite()
 			if err != nil {
 				panic(fmt.Sprintf("Failed to write data: %v", err))
 			}
-
 		}()
-		//receive data
+		// receive data
 		n, err := io.Copy(io.Discard, conn)
 		if n != int64(len(data)) {
 			b.Fatalf("Expected to receive %d bytes, got %d", len(data), n)
@@ -1638,24 +1681,31 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 func BenchmarkTCPProxy16KB(b *testing.B) {
 	benchmarkTCPProxy(16*1024, b)
 }
+
 func BenchmarkTCPProxy32KB(b *testing.B) {
 	benchmarkTCPProxy(32*1024, b)
 }
+
 func BenchmarkTCPProxy64KB(b *testing.B) {
 	benchmarkTCPProxy(64*1024, b)
 }
+
 func BenchmarkTCPProxy128KB(b *testing.B) {
 	benchmarkTCPProxy(128*1024, b)
 }
+
 func BenchmarkTCPProxy256KB(b *testing.B) {
 	benchmarkTCPProxy(256*1024, b)
 }
+
 func BenchmarkTCPProxy512KB(b *testing.B) {
 	benchmarkTCPProxy(512*1024, b)
 }
+
 func BenchmarkTCPProxy1024KB(b *testing.B) {
 	benchmarkTCPProxy(1024*1024, b)
 }
+
 func BenchmarkTCPProxy2048KB(b *testing.B) {
 	benchmarkTCPProxy(2048*1024, b)
 }
