@@ -43,10 +43,10 @@ type Conn struct {
 	once              sync.Once
 	readErr           error
 	conn              net.Conn
-	Validate          Validator
 	bufReader         *bufio.Reader
 	header            *Header
 	ProxyHeaderPolicy Policy
+	Validate          Validator
 	readHeaderTimeout time.Duration
 }
 
