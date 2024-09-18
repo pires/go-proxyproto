@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"testing"
 	"time"
@@ -1480,7 +1479,7 @@ type testConn struct {
 
 func (c *testConn) ReadFrom(r io.Reader) (int64, error) {
 	c.readFromCalledWith = r
-	b, err := ioutil.ReadAll(r)
+	b, err := io.ReadAll(r)
 	return int64(len(b)), err
 }
 func (c *testConn) Write(p []byte) (int, error) {
@@ -1625,7 +1624,7 @@ func benchmarkTCPProxy(size int, b *testing.B) {
 
 		}()
 		//receive data
-		n, err := io.Copy(ioutil.Discard, conn)
+		n, err := io.Copy(io.Discard, conn)
 		if n != int64(len(data)) {
 			b.Fatalf("Expected to receive %d bytes, got %d", len(data), n)
 		}
