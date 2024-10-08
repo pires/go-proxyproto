@@ -3,6 +3,7 @@ package proxyproto
 import (
 	"bufio"
 	"bytes"
+	iorand "crypto/rand"
 	"encoding/binary"
 	"math/rand"
 	"reflect"
@@ -51,7 +52,7 @@ var (
 	fixtureUnixV2       = append(lengthUnixBytes, fixtureUnixAddress...)
 	fixtureTLV          = func() []byte {
 		tlv := make([]byte, 2+rand.Intn(1<<12)) // Not enough to overflow, at least size two
-		rand.Read(tlv)
+		_, _ = iorand.Read(tlv)
 		return tlv
 	}()
 	fixtureIPv4V2TLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureTLV)
