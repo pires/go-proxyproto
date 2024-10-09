@@ -52,7 +52,6 @@ type Conn struct {
 	readErr           error
 	conn              net.Conn
 	bufReader         *bufio.Reader
-	reader            io.Reader
 	header            *Header
 	ProxyHeaderPolicy Policy
 	Validate          Validator
@@ -155,11 +154,9 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
 	// We use 256 bytes to be safe.
 	const bufSize = 256
-	br := bufio.NewReaderSize(conn, bufSize)
 
 	pConn := &Conn{
-		bufReader: br,
-		reader:    io.MultiReader(br, conn),
+		bufReader: bufio.NewReaderSize(conn, bufSize),
 		conn:      conn,
 	}
 
@@ -181,7 +178,7 @@ func (p *Conn) Read(b []byte) (int, error) {
 		return 0, p.readErr
 	}
 
-	return p.reader.Read(b)
+	return p.bufReader.Read(b)
 }
 
 // Write wraps original conn.Write
@@ -363,27 +360,5 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 	if p.readErr != nil {
 		return 0, p.readErr
 	}
-
-	b := make([]byte, p.bufReader.Buffered())
-	if _, err := p.bufReader.Read(b); err != nil {
-		return 0, err // this should never as we read buffered data
-	}
-
-	var n int64
-	{
-		nn, err := w.Write(b)
-		n += int64(nn)
-		if err != nil {
-			return n, err
-		}
-	}
-	{
-		nn, err := io.Copy(w, p.conn)
-		n += nn
-		if err != nil {
-			return n, err
-		}
-	}
-
-	return n, nil
+	return p.bufReader.WriteTo(w)
 }
