@@ -184,16 +184,16 @@ func (header *Header) formatVersion1() ([]byte, error) {
 		return nil, ErrInvalidAddress
 	}
 
-	sourceIP, destIP := sourceAddr.IP, destAddr.IP
+	var sourceIP, destIP netip.Addr
 	switch header.TransportProtocol {
 	case TCPv4:
-		sourceIP = sourceIP.To4()
-		destIP = destIP.To4()
+		sourceIP, _ = netip.AddrFromSlice(sourceAddr.IP.To4())
+		destIP, _ = netip.AddrFromSlice(destAddr.IP.To4())
 	case TCPv6:
-		sourceIP = sourceIP.To16()
-		destIP = destIP.To16()
+		sourceIP, _ = netip.AddrFromSlice(sourceAddr.IP.To16())
+		destIP, _ = netip.AddrFromSlice(destAddr.IP.To16())
 	}
-	if sourceIP == nil || destIP == nil {
+	if !sourceIP.IsValid() || !destIP.IsValid() {
 		return nil, ErrInvalidAddress
 	}
 
