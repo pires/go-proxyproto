@@ -2,6 +2,7 @@ package proxyproto
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -51,7 +52,7 @@ type Conn struct {
 	once              sync.Once
 	readErr           error
 	conn              net.Conn
-	bufReader         *bufio.Reader
+	reader            io.Reader
 	header            *Header
 	ProxyHeaderPolicy Policy
 	Validate          Validator
@@ -150,14 +151,8 @@ func (p *Listener) Addr() net.Addr {
 // NewConn is used to wrap a net.Conn that may be speaking
 // the proxy protocol into a proxyproto.Conn
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
-	// For v1 the header length is at most 108 bytes.
-	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
-	// We use 256 bytes to be safe.
-	const bufSize = 256
-
 	pConn := &Conn{
-		bufReader: bufio.NewReaderSize(conn, bufSize),
-		conn:      conn,
+		conn: conn,
 	}
 
 	for _, opt := range opts {
@@ -178,7 +173,7 @@ func (p *Conn) Read(b []byte) (int, error) {
 		return 0, p.readErr
 	}
 
-	return p.bufReader.Read(b)
+	return p.reader.Read(b)
 }
 
 // Write wraps original conn.Write
@@ -294,7 +289,26 @@ func (p *Conn) readHeader() error {
 		}
 	}
 
-	header, err := Read(p.bufReader)
+	// For v1 the header length is at most 108 bytes.
+	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
+	// We use 256 bytes to be safe.
+	const bufSize = 256
+
+	bb := bytes.NewBuffer(make([]byte, 0, bufSize))
+	tr := io.TeeReader(p.conn, bb)
+	br := bufio.NewReaderSize(tr, bufSize)
+
+	header, err := Read(br)
+
+	if err == nil {
+		_, err = io.CopyN(io.Discard, bb, int64(header.length))
+	}
+
+	if bb.Len() == 0 {
+		p.reader = p.conn
+	} else {
+		p.reader = io.MultiReader(bb, p.conn)
+	}
 
 	// If the connection's readHeaderTimeout is more than 0, undo the change to the
 	// deadline that we made above. Because we retain the readDeadline as part of our
@@ -360,5 +374,5 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 	if p.readErr != nil {
 		return 0, p.readErr
 	}
-	return p.bufReader.WriteTo(w)
+	return io.Copy(w, p.reader)
 }

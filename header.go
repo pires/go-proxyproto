@@ -42,6 +42,7 @@ type Header struct {
 	SourceAddr        net.Addr
 	DestinationAddr   net.Addr
 	rawTLVs           []byte
+	length            int
 }
 
 // HeaderProxyFromAddrs creates a new PROXY header from a source and a
