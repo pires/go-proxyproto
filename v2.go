@@ -100,6 +100,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	if !header.validateLength(length) {
 		return nil, ErrInvalidLength
 	}
+	header.length = 16 + int(length)
 
 	// Return early if the length is zero, which means that
 	// there's no address information and TLVs present for UNSPEC.
