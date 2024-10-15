@@ -300,7 +300,7 @@ func (p *Conn) readHeader() error {
 	header, err := Read(br)
 
 	if err == nil {
-		_, err = io.CopyN(io.Discard, bb, int64(bb.Len()-br.Buffered()))
+		_ = bb.Next(bb.Len() - br.Buffered()) // skip header
 	}
 
 	if bb.Len() == 0 {
