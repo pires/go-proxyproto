@@ -295,13 +295,12 @@ func (p *Conn) readHeader() error {
 	const bufSize = 256
 
 	bb := bytes.NewBuffer(make([]byte, 0, bufSize))
-	tr := io.TeeReader(p.conn, bb)
-	br := bufio.NewReaderSize(tr, bufSize)
+	br := bufio.NewReaderSize(io.TeeReader(p.conn, bb), bufSize)
 
 	header, err := Read(br)
 
 	if err == nil {
-		_, err = io.CopyN(io.Discard, bb, int64(header.length))
+		_, err = io.CopyN(io.Discard, bb, int64(bb.Len()-br.Buffered()))
 	}
 
 	if bb.Len() == 0 {

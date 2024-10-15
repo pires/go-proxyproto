@@ -125,7 +125,6 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	// Command doesn't exist in v1 but set it for other parts of this library
 	// to rely on it for determining connection details.
 	header := initVersion1()
-	header.length = len(buf)
 
 	// Transport protocol has been processed already.
 	header.TransportProtocol = transportProtocol
