@@ -296,8 +296,8 @@ func TestReadHeaderTimeoutIsReset(t *testing.T) {
 }
 
 // TestReadHeaderTimeoutIsEmpty ensures the default is set if it is empty.
-// Because the default is 200ms and we wait longer than that to send a message,
-// we expect the actual address and port to be returned,
+// The default is 10s, but we delay sending a message, so use 200ms in this test.
+// We expect the actual address and port to be returned,
 // rather than the ProxyHeader we defined.
 func TestReadHeaderTimeoutIsEmpty(t *testing.T) {
 	DefaultReadHeaderTimeout = 200 * time.Millisecond
