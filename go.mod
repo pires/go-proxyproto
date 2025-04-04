@@ -1,4 +1,4 @@
-module github.com/pires/go-proxyproto
+module github.com/bollenberger/go-proxyproto
 
 go 1.24
 
