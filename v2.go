@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 )
@@ -108,7 +109,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	}
 
 	if _, err := reader.Peek(int(length)); err != nil {
-		return nil, ErrInvalidLength
+		return nil, fmt.Errorf("%w: %w", ErrInvalidLength, err)
 	}
 
 	// Length-limited reader for payload section
