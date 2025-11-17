@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 )
@@ -106,10 +105,6 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// there's no address information and TLVs present for UNSPEC.
 	if length == 0 {
 		return header, nil
-	}
-
-	if _, err := reader.Peek(int(length)); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidLength, err)
 	}
 
 	// Length-limited reader for payload section
