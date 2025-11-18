@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 )
@@ -98,7 +99,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return nil, ErrCantReadLength
 	}
 	if !header.validateLength(length) {
-		return nil, ErrInvalidLength
+		return nil, fmt.Errorf("%w: length == %d, header.TransportProtocol == %d", ErrInvalidLength, length, header.TransportProtocol)
 	}
 
 	// Return early if the length is zero, which means that
