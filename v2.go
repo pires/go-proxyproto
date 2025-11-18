@@ -108,6 +108,10 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return header, nil
 	}
 
+	if _, err := reader.Peek(int(length)); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidLength, err)
+	}
+
 	// Length-limited reader for payload section
 	payloadReader := io.LimitReader(reader, int64(length)).(*io.LimitedReader)
 
