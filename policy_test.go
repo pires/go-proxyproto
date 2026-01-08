@@ -212,6 +212,44 @@ func TestSkipProxyHeaderForCIDR(t *testing.T) {
 	}
 }
 
+func TestTrustProxyHeaderFrom(t *testing.T) {
+	upstream, err := net.ResolveTCPAddr("tcp", "10.0.0.3:45738")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	var cases = []struct {
+		name           string
+		policy         ConnPolicyFunc
+		upstreamAddr   net.Addr
+		expectedPolicy Policy
+		expectError    bool
+	}{
+		{"reject header from untrusted source", TrustProxyHeaderFrom(net.ParseIP("192.0.2.1")), upstream, REJECT, false},
+		{"use header from trusted load balancer", TrustProxyHeaderFrom(net.ParseIP("10.0.0.3")), upstream, USE, false},
+		{"use header when source matches any trusted IP", TrustProxyHeaderFrom(net.ParseIP("192.0.2.1"), net.ParseIP("10.0.0.3")), upstream, USE, false},
+		{"invalid address should return error", TrustProxyHeaderFrom(net.ParseIP("10.0.0.3")), failingAddr{}, REJECT, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			policy, err := tc.policy(ConnPolicyOptions{
+				Upstream: tc.upstreamAddr,
+			})
+			if !tc.expectError && err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if tc.expectError && err == nil {
+				t.Fatal("Expected error, got none")
+			}
+
+			if policy != tc.expectedPolicy {
+				t.Fatalf("Expected policy %v, got %v", tc.expectedPolicy, policy)
+			}
+		})
+	}
+}
+
 func TestIgnoreProxyHeaderNotOnInterface(t *testing.T) {
 	downstream, err := net.ResolveTCPAddr("tcp", "10.0.0.3:45738")
 	if err != nil {
@@ -225,7 +263,7 @@ func TestIgnoreProxyHeaderNotOnInterface(t *testing.T) {
 		expectedPolicy    Policy
 		expectError       bool
 	}{
-		{"ignore header for requests non on interface", IgnoreProxyHeaderNotOnInterface(net.ParseIP("192.0.2.1")), downstream, IGNORE, false},
+		{"ignore header for requests not on interface", IgnoreProxyHeaderNotOnInterface(net.ParseIP("192.0.2.1")), downstream, IGNORE, false},
 		{"use headers for requests on interface", IgnoreProxyHeaderNotOnInterface(net.ParseIP("10.0.0.3")), downstream, USE, false},
 		{"invalid address should return error", IgnoreProxyHeaderNotOnInterface(net.ParseIP("10.0.0.3")), failingAddr{}, REJECT, true},
 	}
@@ -247,5 +285,4 @@ func TestIgnoreProxyHeaderNotOnInterface(t *testing.T) {
 			}
 		})
 	}
-
 }

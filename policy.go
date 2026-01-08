@@ -186,10 +186,31 @@ func ipFromAddr(upstream net.Addr) (net.IP, error) {
 	return upstreamIP, nil
 }
 
-// IgnoreProxyHeaderNotOnInterface retuns a ConnPolicyFunc which can be used to
+// TrustProxyHeaderFrom returns a ConnPolicyFunc which can be used to decide
+// whether to use or reject PROXY headers based on the source IP of the
+// connection. This policy ensures that only trusted sources can set the PROXY
+// header. Connections from IPs not in the trusted list will be rejected.
+func TrustProxyHeaderFrom(trustedIPs ...net.IP) ConnPolicyFunc {
+	return func(connOpts ConnPolicyOptions) (Policy, error) {
+		ip, err := ipFromAddr(connOpts.Upstream)
+		if err != nil {
+			return REJECT, err
+		}
+
+		for _, trustedIP := range trustedIPs {
+			if trustedIP.Equal(ip) {
+				return USE, nil
+			}
+		}
+
+		return REJECT, nil
+	}
+}
+
+// IgnoreProxyHeaderNotOnInterface returns a ConnPolicyFunc which can be used to
 // decide whether to use or ignore PROXY headers depending on the connection
-// being made on a specific interface. This policy can be used when the server
-// is bound to multiple interfaces but wants to allow on only one interface.
+// being made on specific interfaces. This policy can be used when the server
+// is bound to multiple interfaces but wants to allow on one or more interfaces.
 func IgnoreProxyHeaderNotOnInterface(allowedIP net.IP) ConnPolicyFunc {
 	return func(connOpts ConnPolicyOptions) (Policy, error) {
 		ip, err := ipFromAddr(connOpts.Downstream)
