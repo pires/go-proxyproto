@@ -26,12 +26,14 @@ const (
    };
 */
 type PP2SSL struct {
-	Client uint8 // The <client> field is made of a bit field from the following values,
+	// The Client field is made of a bit field from the following values,
 	// indicating which element is present: PP2_BITFIELD_CLIENT_SSL,
 	// PP2_BITFIELD_CLIENT_CERT_CONN, PP2_BITFIELD_CLIENT_CERT_SESS
-	Verify uint32 // Verify will be zero if the client presented a certificate
+	Client uint8
+	// Verify will be zero if the client presented a certificate
 	// and it was successfully verified, and non-zero otherwise.
-	TLV []proxyproto.TLV
+	Verify uint32
+	TLV    []proxyproto.TLV
 }
 
 // Verified is true if the client presented a certificate and it was successfully verified
