@@ -104,6 +104,17 @@ func (s PP2SSL) ClientCN() (string, bool) {
 	return "", false
 }
 
+// ClientCert returns the raw X.509 client certificate encoded in ASN.1 DER and
+// whether that extension exists.
+func (s PP2SSL) ClientCert() ([]byte, bool) {
+	for _, tlv := range s.TLV {
+		if tlv.Type == proxyproto.PP2_SUBTYPE_SSL_CLIENT_CERT {
+			return tlv.Value, true
+		}
+	}
+	return nil, false
+}
+
 // SSLType is true if the TLV is type SSL
 func IsSSL(t proxyproto.TLV) bool {
 	return t.Type == proxyproto.PP2_TYPE_SSL && len(t.Value) >= tlvSSLMinLen
