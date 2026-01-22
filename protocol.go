@@ -196,9 +196,9 @@ func (p *Conn) Close() error {
 
 // ProxyHeader returns the proxy protocol header, if any. If an error occurs
 // while reading the proxy header, nil is returned.
-func (p *Conn) ProxyHeader() *Header {
+func (p *Conn) ProxyHeader() (*Header, error) {
 	p.once.Do(func() { p.readErr = p.readHeader() })
-	return p.header
+	return p.header, p.readErr
 }
 
 // LocalAddr returns the address of the server if the proxy
