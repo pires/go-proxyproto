@@ -1,6 +1,7 @@
 package http2_test
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net"
@@ -31,6 +32,10 @@ func ExampleServer() {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }
+
+type contextKey string
+
+const connContextKey = contextKey("conn")
 
 func TestServer_h1(t *testing.T) {
 	addr, server := newTestServer(t)
@@ -94,7 +99,13 @@ func newTestServer(t *testing.T) (addr string, server *http.Server) {
 
 	server = &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if v := r.Context().Value(connContextKey); v == nil {
+				t.Errorf("http.Request.Context missing connContextKey")
+			}
 		}),
+		ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
+			return context.WithValue(ctx, connContextKey, struct{}{})
+		},
 	}
 
 	h2Server := h2proxy.NewServer(server, nil)

@@ -2,6 +2,7 @@
 package http2
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log"
@@ -143,7 +144,13 @@ func (srv *Server) serveConn(conn net.Conn) error {
 	switch proto {
 	case http2.NextProtoTLS, "h2c":
 		defer conn.Close()
-		opts := http2.ServeConnOpts{Handler: srv.h1.Handler}
+
+		ctx := context.Background()
+		if srv.h1.ConnContext != nil {
+			ctx = srv.h1.ConnContext(ctx, conn)
+		}
+
+		opts := http2.ServeConnOpts{Context: ctx, BaseConfig: srv.h1}
 		srv.h2.ServeConn(conn, &opts)
 		return nil
 	case "", "http/1.0", "http/1.1":
