@@ -111,15 +111,20 @@ func (srv *Server) Serve(ln net.Listener) error {
 
 		delay = 0
 
-		go func() {
-			if err := srv.serveConn(conn); err != nil {
+		baseCtx := context.Background()
+		if srv.h1.BaseContext != nil {
+			baseCtx = srv.h1.BaseContext(ln)
+		}
+
+		go func(conn net.Conn, baseCtx context.Context) {
+			if err := srv.serveConn(conn, baseCtx); err != nil {
 				srv.errorLog().Printf("listener %q: %v", ln.Addr(), err)
 			}
-		}()
+		}(conn, baseCtx)
 	}
 }
 
-func (srv *Server) serveConn(conn net.Conn) error {
+func (srv *Server) serveConn(conn net.Conn, baseCtx context.Context) error {
 	var proto string
 	switch conn := conn.(type) {
 	case *tls.Conn:
@@ -145,9 +150,11 @@ func (srv *Server) serveConn(conn net.Conn) error {
 	case http2.NextProtoTLS, "h2c":
 		defer conn.Close()
 
-		ctx := context.Background()
+		ctx := baseCtx
 		if srv.h1.ConnContext != nil {
-			ctx = srv.h1.ConnContext(ctx, conn)
+			if connCtx := srv.h1.ConnContext(ctx, conn); connCtx != nil {
+				ctx = connCtx
+			}
 		}
 
 		opts := http2.ServeConnOpts{Context: ctx, BaseConfig: srv.h1}

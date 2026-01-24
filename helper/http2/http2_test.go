@@ -35,7 +35,10 @@ func ExampleServer() {
 
 type contextKey string
 
-const connContextKey = contextKey("conn")
+const (
+	connContextKey = contextKey("conn")
+	baseContextKey = contextKey("base")
+)
 
 func TestServer_h1(t *testing.T) {
 	addr, server := newTestServer(t)
@@ -102,7 +105,13 @@ func newTestServer(t *testing.T) (addr string, server *http.Server) {
 			if v := r.Context().Value(connContextKey); v == nil {
 				t.Errorf("http.Request.Context missing connContextKey")
 			}
+			if v := r.Context().Value(baseContextKey); v == nil {
+				t.Errorf("http.Request.Context missing baseContextKey")
+			}
 		}),
+		BaseContext: func(_ net.Listener) context.Context {
+			return context.WithValue(context.Background(), baseContextKey, struct{}{})
+		},
 		ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
 			return context.WithValue(ctx, connContextKey, struct{}{})
 		},
