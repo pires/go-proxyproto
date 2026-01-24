@@ -128,6 +128,10 @@ func (srv *Server) serveConn(conn net.Conn, baseCtx context.Context) error {
 	var proto string
 	switch conn := conn.(type) {
 	case *tls.Conn:
+		if err := conn.Handshake(); err != nil {
+			conn.Close()
+			return err
+		}
 		proto = conn.ConnectionState().NegotiatedProtocol
 	case *proxyproto.Conn:
 		if proxyHeader := conn.ProxyHeader(); proxyHeader != nil {
