@@ -155,10 +155,11 @@ func (srv *Server) serveConn(conn net.Conn, baseCtx context.Context) error {
 		defer conn.Close()
 
 		ctx := baseCtx
-		if srv.h1.ConnContext != nil {
-			if connCtx := srv.h1.ConnContext(ctx, conn); connCtx != nil {
-				ctx = connCtx
-			}
+		// We don't check if srv.h1.ConnContext is nil so http.Server works the same
+		// with or without this middleware.
+		// For more info, see https://github.com/pires/go-proxyproto/pull/140/changes#r2725568706.
+		if connCtx := srv.h1.ConnContext(ctx, conn); connCtx != nil {
+			ctx = connCtx
 		}
 
 		opts := http2.ServeConnOpts{Context: ctx, BaseConfig: srv.h1}
