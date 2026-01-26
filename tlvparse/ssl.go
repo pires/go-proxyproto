@@ -8,9 +8,10 @@ import (
 	"github.com/pires/go-proxyproto"
 )
 
+// pp2_tlv_ssl.client bit fields.
+//
 //nolint:revive // Names follow the PROXY protocol spec.
 const (
-	// pp2_tlv_ssl.client bit fields.
 	// PP2_BITFIELD_CLIENT_SSL indicates the client used SSL/TLS.
 	PP2_BITFIELD_CLIENT_SSL uint8 = 0x01
 	// PP2_BITFIELD_CLIENT_CERT_CONN indicates cert on the connection.
