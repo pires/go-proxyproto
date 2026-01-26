@@ -1590,7 +1590,7 @@ func Test_TLSServer(t *testing.T) {
 	}
 	defer func() {
 		if err := s.Close(); err != nil {
-			t.Fatalf("failed to close TLS server: %v", err)
+			t.Errorf("failed to close TLS server: %v", err)
 		}
 	}()
 
@@ -1673,7 +1673,7 @@ func Test_MisconfiguredTLSServerRespondsWithUnderlyingError(t *testing.T) {
 	}
 	defer func() {
 		if err := s.Close(); err != nil {
-			t.Fatalf("failed to close TLS server: %v", err)
+			t.Errorf("failed to close TLS server: %v", err)
 		}
 	}()
 

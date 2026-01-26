@@ -52,7 +52,7 @@ func TestServer_h1(t *testing.T) {
 	addr, server := newTestServer(t)
 	t.Cleanup(func() {
 		if err := server.Close(); err != nil {
-			t.Fatalf("failed to close server: %v", err)
+			t.Errorf("failed to close server: %v", err)
 		}
 	})
 
@@ -69,7 +69,7 @@ func TestServer_h2(t *testing.T) {
 	addr, server := newTestServer(t)
 	t.Cleanup(func() {
 		if err := server.Close(); err != nil {
-			t.Fatalf("failed to close server: %v", err)
+			t.Errorf("failed to close server: %v", err)
 		}
 	})
 
@@ -79,7 +79,7 @@ func TestServer_h2(t *testing.T) {
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
-			t.Fatalf("failed to close connection: %v", err)
+			t.Errorf("failed to close connection: %v", err)
 		}
 	}()
 

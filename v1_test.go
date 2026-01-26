@@ -261,7 +261,7 @@ func listen(t *testing.T) *Listener {
 	return &Listener{Listener: l}
 }
 
-func client(_ *testing.T, addr, header string, length int, terminate bool, wait time.Duration, done chan struct{},
+func client(t *testing.T, addr, header string, length int, terminate bool, wait time.Duration, done chan struct{},
 	result chan error,
 ) {
 	c, err := net.Dial("tcp", addr)
@@ -269,9 +269,11 @@ func client(_ *testing.T, addr, header string, length int, terminate bool, wait 
 		result <- fmt.Errorf("dial: %w", err)
 		return
 	}
-	defer func() {
-		_ = c.Close()
-	}()
+	t.Cleanup(func() {
+		if err := c.Close(); err != nil {
+			t.Errorf("failed to close connection: %v", err)
+		}
+	})
 
 	if terminate && length < 2 {
 		length = 2
