@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"math/big"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -525,4 +526,87 @@ func fixtureWithTLV(cur []byte, addr []byte, tlv []byte) []byte {
 	}
 
 	return append(append(tlen, addr...), tlv...)
+}
+
+func Test_parseUnixName(t *testing.T) {
+	tests := []struct {
+		name string // description of this test case
+		// Named input parameters for target function.
+		b    []byte
+		want string
+	}{
+		{
+			name: "simple name, no null terminator",
+			b:    []byte("socketname"),
+			want: "socketname",
+		},
+		{
+			name: "simple name with single null byte",
+			b:    append([]byte("socketname"), 0),
+			want: "socketname",
+		},
+		{
+			name: "long name with null terminator in the middle",
+			b:    append([]byte("sock\000etname"), 0),
+			want: "sock",
+		},
+		{
+			name: "empty input",
+			b:    []byte{},
+			want: "",
+		},
+		{
+			name: "all null bytes",
+			b:    []byte{0, 0, 0},
+			want: "",
+		},
+		{
+			name: "mixed bytes with null at end",
+			b:    append([]byte("abc123"), 0),
+			want: "abc123",
+		},
+		{
+			name: "name with null in middle",
+			b:    []byte{'t', 'e', 0, 's', 't'},
+			want: "te",
+		},
+		{
+			name: "no null, binary data",
+			b:    []byte{0x7f, 0xfe, 0x3c},
+			want: string([]byte{0x7f, 0xfe, 0x3c}),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseUnixName(tt.b)
+			if got != tt.want {
+				t.Errorf("parseUnixName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_formatUnixName(t *testing.T) {
+	maxLen := int(lengthUnix) / 2
+	longName := strings.Repeat("a", maxLen+5)
+	shortName := "socket"
+
+	longFormatted := formatUnixName(longName)
+	if len(longFormatted) != maxLen {
+		t.Fatalf("formatUnixName() length = %d, want %d", len(longFormatted), maxLen)
+	}
+	if got := parseUnixName(longFormatted); got != longName[:maxLen] {
+		t.Errorf("formatUnixName() long parse = %q, want %q", got, longName[:maxLen])
+	}
+
+	shortFormatted := formatUnixName(shortName)
+	if len(shortFormatted) != maxLen {
+		t.Fatalf("formatUnixName() length = %d, want %d", len(shortFormatted), maxLen)
+	}
+	if got := parseUnixName(shortFormatted); got != shortName {
+		t.Errorf("formatUnixName() short parse = %q, want %q", got, shortName)
+	}
+	if !bytes.HasPrefix(shortFormatted, []byte(shortName)) {
+		t.Errorf("formatUnixName() short prefix = %q, want prefix %q", shortFormatted, shortName)
+	}
 }

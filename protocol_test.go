@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -608,6 +609,177 @@ func TestParse_ipv4(t *testing.T) {
 	err = <-cliResult
 	if err != nil {
 		t.Fatalf("client error: %v", err)
+	}
+}
+
+func TestParse_unixStream(t *testing.T) {
+	socketDir := t.TempDir()
+	socketPath := filepath.Join(socketDir, "proxy.sock")
+	l, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := l.Close(); closeErr != nil {
+			t.Errorf("failed to close listener: %v", closeErr)
+		}
+	})
+
+	pl := &Listener{Listener: l}
+
+	header := &Header{
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: UnixStream,
+		SourceAddr: &net.UnixAddr{
+			Net:  "unix",
+			Name: "source.sock",
+		},
+		DestinationAddr: &net.UnixAddr{
+			Net:  "unix",
+			Name: "dest.sock",
+		},
+	}
+
+	cliResult := make(chan error)
+	go func() {
+		conn, err := net.Dial("unix", socketPath)
+		if err != nil {
+			cliResult <- err
+			return
+		}
+		defer func() {
+			if closeErr := conn.Close(); closeErr != nil {
+				t.Errorf("failed to close connection: %v", closeErr)
+			}
+		}()
+
+		// Write out the header!
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
+
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			cliResult <- err
+			return
+		}
+
+		recv := make([]byte, 4)
+		if _, err = conn.Read(recv); err != nil {
+			cliResult <- err
+			return
+		}
+		if !bytes.Equal(recv, []byte("pong")) {
+			cliResult <- fmt.Errorf("bad: %v", recv)
+			return
+		}
+
+		close(cliResult)
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Errorf("failed to close connection: %v", closeErr)
+		}
+	})
+
+	recv := make([]byte, 4)
+	if _, err = conn.Read(recv); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !bytes.Equal(recv, []byte("ping")) {
+		t.Fatalf("bad: %v", recv)
+	}
+
+	if _, err := conn.Write([]byte("pong")); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	addr := conn.RemoteAddr().(*net.UnixAddr)
+	if addr.Name != header.SourceAddr.(*net.UnixAddr).Name {
+		t.Fatalf("bad: %v", addr)
+	}
+
+	h := conn.(*Conn).ProxyHeader()
+	if !h.EqualsTo(header) {
+		t.Errorf("bad: %v", h)
+	}
+
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
+	}
+}
+
+func TestParse_unixDatagram(t *testing.T) {
+	server, client := net.Pipe()
+	t.Cleanup(func() {
+		if closeErr := client.Close(); closeErr != nil {
+			t.Errorf("failed to close client: %v", closeErr)
+		}
+	})
+	t.Cleanup(func() {
+		if closeErr := server.Close(); closeErr != nil {
+			t.Errorf("failed to close server: %v", closeErr)
+		}
+	})
+
+	header := &Header{
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: UnixDatagram,
+		SourceAddr: &net.UnixAddr{
+			Net:  "unixgram",
+			Name: "source.sock",
+		},
+		DestinationAddr: &net.UnixAddr{
+			Net:  "unixgram",
+			Name: "dest.sock",
+		},
+	}
+
+	go func() {
+		defer func() {
+			if closeErr := client.Close(); closeErr != nil {
+				t.Errorf("failed to close client: %v", closeErr)
+			}
+		}()
+		if _, err := header.WriteTo(client); err != nil {
+			t.Errorf("failed to write header: %v", err)
+		}
+		if _, err := client.Write([]byte("ping")); err != nil {
+			t.Errorf("failed to write ping: %v", err)
+		}
+	}()
+
+	conn := NewConn(server)
+	recv := make([]byte, 4)
+	if _, err := conn.Read(recv); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	if !bytes.Equal(recv, []byte("ping")) {
+		t.Fatalf("bad: %v", recv)
+	}
+
+	remoteAddr := conn.RemoteAddr().(*net.UnixAddr)
+	if remoteAddr.Name != header.SourceAddr.(*net.UnixAddr).Name {
+		t.Fatalf("bad: %v", remoteAddr)
+	}
+
+	localAddr := conn.LocalAddr().(*net.UnixAddr)
+	if localAddr.Name != header.DestinationAddr.(*net.UnixAddr).Name {
+		t.Fatalf("bad: %v", localAddr)
+	}
+
+	h := conn.ProxyHeader()
+	if !h.EqualsTo(header) {
+		t.Errorf("bad: %v", h)
 	}
 }
 
