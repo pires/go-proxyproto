@@ -15,7 +15,7 @@ var (
 	// DefaultReadHeaderTimeout is how long header processing waits for header to
 	// be read from the wire, if Listener.ReaderHeaderTimeout is not set.
 	// It's kept as a global variable so to make it easier to find and override,
-	// e.g. go build -ldflags -X "github.com/pires/go-proxyproto.DefaultReadHeaderTimeout=1s"
+	// e.g. go build -ldflags -X "github.com/pires/go-proxyproto.DefaultReadHeaderTimeout=1s".
 	DefaultReadHeaderTimeout = 10 * time.Second
 
 	// ErrInvalidUpstream should be returned when an upstream connection address
@@ -63,7 +63,7 @@ type Conn struct {
 // In case the header is not deemed valid it should return an error.
 type Validator func(*Header) error
 
-// ValidateHeader adds given validator for proxy headers to a connection when passed as option to NewConn()
+// ValidateHeader adds given validator for proxy headers to a connection when passed as option to NewConn().
 func ValidateHeader(v Validator) func(*Conn) {
 	return func(c *Conn) {
 		if v != nil {
@@ -72,7 +72,7 @@ func ValidateHeader(v Validator) func(*Conn) {
 	}
 }
 
-// SetReadHeaderTimeout sets the readHeaderTimeout for a connection when passed as option to NewConn()
+// SetReadHeaderTimeout sets the readHeaderTimeout for a connection when passed as option to NewConn().
 func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
 	return func(c *Conn) {
 		if t >= 0 {
@@ -84,7 +84,7 @@ func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
 // Accept waits for and returns the next valid connection to the listener.
 func (p *Listener) Accept() (net.Conn, error) {
 	for {
-		// Get the underlying connection
+		// Get the underlying connection.
 		conn, err := p.Listener.Accept()
 		if err != nil {
 			return nil, err
@@ -104,17 +104,19 @@ func (p *Listener) Accept() (net.Conn, error) {
 				})
 			}
 			if err != nil {
-				// can't decide the policy, we can't accept the connection
-				conn.Close()
+				// can't decide the policy, we can't accept the connection.
+				if closeErr := conn.Close(); closeErr != nil {
+					return nil, closeErr
+				}
 
 				if errors.Is(err, ErrInvalidUpstream) {
-					// keep listening for other connections
+					// keep listening for other connections.
 					continue
 				}
 
 				return nil, err
 			}
-			// Handle a connection as a regular one
+			// Handle a connection as a regular one.
 			if proxyHeaderPolicy == SKIP {
 				return conn, nil
 			}
@@ -149,7 +151,7 @@ func (p *Listener) Addr() net.Addr {
 }
 
 // NewConn is used to wrap a net.Conn that may be speaking
-// the proxy protocol into a proxyproto.Conn
+// the proxy protocol into a proxyproto.Conn.
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	// For v1 the header length is at most 108 bytes.
 	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
@@ -184,12 +186,12 @@ func (p *Conn) Read(b []byte) (int, error) {
 	return p.reader.Read(b)
 }
 
-// Write wraps original conn.Write
+// Write wraps original conn.Write.
 func (p *Conn) Write(b []byte) (int, error) {
 	return p.conn.Write(b)
 }
 
-// Close wraps original conn.Close
+// Close wraps original conn.Close.
 func (p *Conn) Close() error {
 	return p.conn.Close()
 }
@@ -266,13 +268,13 @@ func (p *Conn) UDPConn() (conn *net.UDPConn, ok bool) {
 	return
 }
 
-// SetDeadline wraps original conn.SetDeadline
+// SetDeadline wraps original conn.SetDeadline.
 func (p *Conn) SetDeadline(t time.Time) error {
 	p.readDeadline.Store(t)
 	return p.conn.SetDeadline(t)
 }
 
-// SetReadDeadline wraps original conn.SetReadDeadline
+// SetReadDeadline wraps original conn.SetReadDeadline.
 func (p *Conn) SetReadDeadline(t time.Time) error {
 	// Set a local var that tells us the desired deadline. This is
 	// needed in order to reset the read deadline to the one that is
@@ -281,11 +283,12 @@ func (p *Conn) SetReadDeadline(t time.Time) error {
 	return p.conn.SetReadDeadline(t)
 }
 
-// SetWriteDeadline wraps original conn.SetWriteDeadline
+// SetWriteDeadline wraps original conn.SetWriteDeadline.
 func (p *Conn) SetWriteDeadline(t time.Time) error {
 	return p.conn.SetWriteDeadline(t)
 }
 
+// readHeader reads the proxy protocol header from the connection.
 func (p *Conn) readHeader() error {
 	// If the connection's readHeaderTimeout is more than 0,
 	// push our deadline back to now plus the timeout. This should only
@@ -349,7 +352,7 @@ func (p *Conn) readHeader() error {
 	return err
 }
 
-// ReadFrom implements the io.ReaderFrom ReadFrom method
+// ReadFrom implements the io.ReaderFrom ReadFrom method.
 func (p *Conn) ReadFrom(r io.Reader) (int64, error) {
 	if rf, ok := p.conn.(io.ReaderFrom); ok {
 		return rf.ReadFrom(r)
@@ -357,7 +360,7 @@ func (p *Conn) ReadFrom(r io.Reader) (int64, error) {
 	return io.Copy(p.conn, r)
 }
 
-// WriteTo implements io.WriterTo
+// WriteTo implements io.WriterTo.
 func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 	p.once.Do(func() { p.readErr = p.readHeader() })
 	if p.readErr != nil {
@@ -366,7 +369,7 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 
 	b := make([]byte, p.bufReader.Buffered())
 	if _, err := p.bufReader.Read(b); err != nil {
-		return 0, err // this should never as we read buffered data
+		return 0, err // this should never happen as we read buffered data.
 	}
 
 	var n int64

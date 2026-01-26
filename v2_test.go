@@ -5,7 +5,7 @@ import (
 	"bytes"
 	iorand "crypto/rand"
 	"encoding/binary"
-	"math/rand"
+	"math/big"
 	"reflect"
 	"testing"
 )
@@ -13,7 +13,7 @@ import (
 var (
 	invalidRune = byte('\x99')
 
-	// Lengths to use in tests
+	// Lengths to use in tests.
 	lengthPadded = uint16(84)
 
 	lengthEmptyBytes = func() []byte {
@@ -27,21 +27,21 @@ var (
 		return a
 	}()
 
-	// If life gives you lemons, make mojitos
+	// If life gives you lemons, make mojitos.
 	portBytes = func() []byte {
 		a := make([]byte, 2)
-		binary.BigEndian.PutUint16(a, PORT)
+		binary.BigEndian.PutUint16(a, testValidPort)
 		return a
 	}()
 
 	unixBytes = pad([]byte("socket"), 108)
 
-	// Tests don't care if source and destination addresses and ports are the same
+	// Tests don't care if source and destination addresses and ports are the same.
 	addressesIPv4 = append(v4ip.To4(), v4ip.To4()...)
 	addressesIPv6 = append(v6ip.To16(), v6ip.To16()...)
 	ports         = append(portBytes, portBytes...)
 
-	// Fixtures to use in tests
+	// Fixtures to use in tests.
 	fixtureIPv4Address  = append(addressesIPv4, ports...)
 	fixtureIPv4V2       = append(lengthV4Bytes, fixtureIPv4Address...)
 	fixtureIPv4V2Padded = append(append(lengthPaddedBytes, fixtureIPv4Address...), make([]byte, lengthPadded-lengthV4)...)
@@ -51,7 +51,11 @@ var (
 	fixtureUnixAddress  = append(unixBytes, unixBytes...)
 	fixtureUnixV2       = append(lengthUnixBytes, fixtureUnixAddress...)
 	fixtureTLV          = func() []byte {
-		tlv := make([]byte, 2+rand.Intn(1<<12)) // Not enough to overflow, at least size two
+		n, err := iorand.Int(iorand.Reader, big.NewInt(1<<12))
+		if err != nil {
+			panic(err)
+		}
+		tlv := make([]byte, 2+int(n.Int64())) // Not enough to overflow, at least size two.
 		_, _ = iorand.Read(tlv)
 		return tlv
 	}()
@@ -59,7 +63,7 @@ var (
 	fixtureIPv6V2TLV = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
 	fixtureUnspecTLV = fixtureWithTLV(lengthUnspecBytes, []byte{}, fixtureTLV)
 
-	// Arbitrary bytes following proxy bytes
+	// Arbitrary bytes following proxy bytes.
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
 )
 
@@ -75,7 +79,7 @@ var invalidParseV2Tests = []struct {
 }{
 	{
 		desc:          "no signature",
-		reader:        newBufioReader([]byte(NO_PROTOCOL)),
+		reader:        newBufioReader([]byte(testNoProtocol)),
 		expectedError: ErrNoProxyProtocol,
 	},
 	{
@@ -313,7 +317,9 @@ func TestWriteV2Valid(t *testing.T) {
 			if _, err := tt.expectedHeader.WriteTo(w); err != nil {
 				t.Fatal("unexpected error ", err)
 			}
-			w.Flush()
+			if err := w.Flush(); err != nil {
+				t.Fatal("unexpected error ", err)
+			}
 
 			// Read written bytes to validate written header
 			r := bufio.NewReader(&b)

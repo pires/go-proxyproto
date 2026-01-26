@@ -8,16 +8,25 @@ import (
 	"github.com/pires/go-proxyproto"
 )
 
+//nolint:revive // Names follow the PROXY protocol spec.
 const (
-	// pp2_tlv_ssl.client  bit fields
-	PP2_BITFIELD_CLIENT_SSL       uint8 = 0x01
+	// pp2_tlv_ssl.client bit fields.
+	// PP2_BITFIELD_CLIENT_SSL indicates the client used SSL/TLS.
+	PP2_BITFIELD_CLIENT_SSL uint8 = 0x01
+	// PP2_BITFIELD_CLIENT_CERT_CONN indicates cert on the connection.
 	PP2_BITFIELD_CLIENT_CERT_CONN uint8 = 0x02
+	// PP2_BITFIELD_CLIENT_CERT_SESS indicates cert in the session.
 	PP2_BITFIELD_CLIENT_CERT_SESS uint8 = 0x04
+)
 
+const (
+	// tlvSSLMinLen is the minimum length of a SSL TLV.
 	tlvSSLMinLen = 5 // len(pp2_tlv_ssl.client) + len(pp2_tlv_ssl.verify)
 )
 
-// 2.2.5. The PP2_TYPE_SSL type and subtypes
+// PP2SSL represents the PP2_TYPE_SSL TLV and its subtypes.
+//
+// See section 2.2.5 of the PROXY protocol spec.
 /*
    struct pp2_tlv_ssl {
            uint8_t  client;
@@ -36,7 +45,7 @@ type PP2SSL struct {
 	TLV    []proxyproto.TLV
 }
 
-// Verified is true if the client presented a certificate and it was successfully verified
+// Verified is true if the client presented a certificate and it was successfully verified.
 func (s PP2SSL) Verified() bool {
 	return s.Verify == 0
 }
@@ -117,12 +126,12 @@ func (s PP2SSL) ClientCert() ([]byte, bool) {
 	return nil, false
 }
 
-// SSLType is true if the TLV is type SSL
+// IsSSL reports whether the TLV is of SSL type.
 func IsSSL(t proxyproto.TLV) bool {
 	return t.Type == proxyproto.PP2_TYPE_SSL && len(t.Value) >= tlvSSLMinLen
 }
 
-// SSL returns the pp2_tlv_ssl from section 2.2.5 or errors with ErrIncompatibleTLV or ErrMalformedTLV
+// SSL returns the pp2_tlv_ssl from section 2.2.5 or errors with ErrIncompatibleTLV or ErrMalformedTLV.
 func SSL(t proxyproto.TLV) (PP2SSL, error) {
 	ssl := PP2SSL{}
 	if !IsSSL(t) {
@@ -177,7 +186,7 @@ func SSL(t proxyproto.TLV) (PP2SSL, error) {
 	return ssl, nil
 }
 
-// SSL returns the first PP2SSL if it exists and is well formed as well as bool indicating if it was found.
+// FindSSL returns the first PP2SSL if it exists and is well formed.
 func FindSSL(tlvs []proxyproto.TLV) (PP2SSL, bool) {
 	for _, t := range tlvs {
 		if ssl, err := SSL(t); err == nil {

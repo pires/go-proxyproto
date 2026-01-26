@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 	"net"
 )
 
@@ -62,7 +63,7 @@ type _addrUnix struct {
 
 func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Skip first 12 bytes (signature)
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		if _, err = reader.ReadByte(); err != nil {
 			return nil, ErrCantReadProtocolVersionAndCommand
 		}
@@ -212,11 +213,16 @@ func (header *Header) formatVersion2() ([]byte, error) {
 		buf.Write(addrDst)
 
 		if sourcePort, destPort, ok := header.Ports(); ok {
+			if sourcePort < 0 || sourcePort > math.MaxUint16 || destPort < 0 || destPort > math.MaxUint16 {
+				return nil, ErrInvalidPortNumber
+			}
 			portBytes := make([]byte, 2)
 
+			//nolint:gosec // Bounds are checked above.
 			binary.BigEndian.PutUint16(portBytes, uint16(sourcePort))
 			buf.Write(portBytes)
 
+			//nolint:gosec // Bounds are checked above.
 			binary.BigEndian.PutUint16(portBytes, uint16(destPort))
 			buf.Write(portBytes)
 		}
@@ -253,6 +259,7 @@ func addTLVLen(cur []byte, tlvLen int) ([]byte, error) {
 		return nil, errUint16Overflow
 	}
 	a := make([]byte, 2)
+	//nolint:gosec // newLen bounds are validated above.
 	binary.BigEndian.PutUint16(a, uint16(newLen))
 	return a, nil
 }
@@ -260,19 +267,19 @@ func addTLVLen(cur []byte, tlvLen int) ([]byte, error) {
 func newIPAddr(transport AddressFamilyAndProtocol, ip net.IP, port uint16) net.Addr {
 	if transport.IsStream() {
 		return &net.TCPAddr{IP: ip, Port: int(port)}
-	} else if transport.IsDatagram() {
-		return &net.UDPAddr{IP: ip, Port: int(port)}
-	} else {
-		return nil
 	}
+	if transport.IsDatagram() {
+		return &net.UDPAddr{IP: ip, Port: int(port)}
+	}
+	return nil
 }
 
 func parseUnixName(b []byte) string {
-	i := bytes.IndexByte(b, 0)
-	if i < 0 {
+	before, _, ok := bytes.Cut(b, []byte{0})
+	if !ok {
 		return string(b)
 	}
-	return string(b[:i])
+	return string(before)
 }
 
 func formatUnixName(name string) []byte {

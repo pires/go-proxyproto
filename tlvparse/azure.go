@@ -9,13 +9,15 @@ import (
 	"github.com/pires/go-proxyproto"
 )
 
+//nolint:revive // Names follow the spec.
 const (
-	// Azure's extension
-	PP2_TYPE_AZURE                           = 0xEE
+	// PP2_TYPE_AZURE identifies Azure TLV extensions.
+	PP2_TYPE_AZURE = 0xEE
+	// PP2_SUBTYPE_AZURE_PRIVATEENDPOINT_LINKID identifies the Private Endpoint LinkID subtype.
 	PP2_SUBTYPE_AZURE_PRIVATEENDPOINT_LINKID = 0x01
 )
 
-// IsAzurePrivateEndpointLinkID returns true if given TLV matches Azure Private Endpoint LinkID format
+// IsAzurePrivateEndpointLinkID returns true if given TLV matches Azure Private Endpoint LinkID format.
 func isAzurePrivateEndpointLinkID(tlv proxyproto.TLV) bool {
 	return tlv.Type == PP2_TYPE_AZURE && len(tlv.Value) == 5 && tlv.Value[0] == PP2_SUBTYPE_AZURE_PRIVATEENDPOINT_LINKID
 }

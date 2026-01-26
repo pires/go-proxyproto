@@ -100,8 +100,8 @@ func (srv *Server) Serve(ln net.Listener) error {
 			} else {
 				delay *= 2
 			}
-			if max := 1 * time.Second; delay > max {
-				delay = max
+			if maxDelay := 1 * time.Second; delay > maxDelay {
+				delay = maxDelay
 			}
 			srv.errorLog().Printf("listener %q: accept error (retrying in %v): %v", ln.Addr(), delay, err)
 			time.Sleep(delay)
@@ -116,20 +116,22 @@ func (srv *Server) Serve(ln net.Listener) error {
 			baseCtx = srv.h1.BaseContext(ln)
 		}
 
-		go func(conn net.Conn, baseCtx context.Context) {
-			if err := srv.serveConn(conn, baseCtx); err != nil {
+		go func(baseCtx context.Context, conn net.Conn) {
+			if err := srv.serveConn(baseCtx, conn); err != nil {
 				srv.errorLog().Printf("listener %q: %v", ln.Addr(), err)
 			}
-		}(conn, baseCtx)
+		}(baseCtx, conn)
 	}
 }
 
-func (srv *Server) serveConn(conn net.Conn, baseCtx context.Context) error {
+func (srv *Server) serveConn(baseCtx context.Context, conn net.Conn) error {
 	var proto string
 	switch conn := conn.(type) {
 	case *tls.Conn:
 		if err := conn.Handshake(); err != nil {
-			conn.Close()
+			if closeErr := conn.Close(); closeErr != nil {
+				srv.errorLog().Printf("failed to close connection: %v", closeErr)
+			}
 			return err
 		}
 		proto = conn.ConnectionState().NegotiatedProtocol
@@ -137,7 +139,9 @@ func (srv *Server) serveConn(conn net.Conn, baseCtx context.Context) error {
 		if proxyHeader := conn.ProxyHeader(); proxyHeader != nil {
 			tlvs, err := proxyHeader.TLVs()
 			if err != nil {
-				conn.Close()
+				if closeErr := conn.Close(); closeErr != nil {
+					srv.errorLog().Printf("failed to close connection: %v", closeErr)
+				}
 				return err
 			}
 			for _, tlv := range tlvs {
@@ -152,7 +156,11 @@ func (srv *Server) serveConn(conn net.Conn, baseCtx context.Context) error {
 	// See https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
 	switch proto {
 	case http2.NextProtoTLS, "h2c":
-		defer conn.Close()
+		defer func() {
+			if closeErr := conn.Close(); closeErr != nil {
+				srv.errorLog().Printf("failed to close connection: %v", closeErr)
+			}
+		}()
 
 		ctx := baseCtx
 		// We don't check if srv.h1.ConnContext is nil so http.Server works the same
@@ -168,7 +176,9 @@ func (srv *Server) serveConn(conn net.Conn, baseCtx context.Context) error {
 	case "", "http/1.0", "http/1.1":
 		return srv.h1Listener.ServeConn(conn)
 	default:
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			srv.errorLog().Printf("failed to close connection: %v", closeErr)
+		}
 		return fmt.Errorf("unsupported protocol %q", proto)
 	}
 }
