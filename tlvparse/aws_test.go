@@ -2,6 +2,7 @@ package tlvparse
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/pires/go-proxyproto"
@@ -230,6 +231,10 @@ func vpceTLV(vpce string) []byte {
 	tlv := []byte{
 		PP2_TYPE_AWS, 0x00, 0x00, PP2_SUBTYPE_AWS_VPCE_ID,
 	}
+	if len(vpce) > math.MaxUint16-1 {
+		panic("vpce too long for TLV")
+	}
+	//nolint:gosec // Length is bounded above.
 	binary.BigEndian.PutUint16(tlv[1:3], uint16(len(vpce)+1)) // +1 for subtype
 	return append(tlv, []byte(vpce)...)
 }

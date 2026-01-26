@@ -1,3 +1,4 @@
+// Package main provides a proxyproto server example.
 package main
 
 import (
@@ -17,11 +18,22 @@ func main() {
 
 	// Wrap listener in a proxyproto listener
 	proxyListener := &proxyproto.Listener{Listener: list}
-	defer proxyListener.Close()
+	defer func() {
+		if err := proxyListener.Close(); err != nil {
+			log.Printf("failed to close proxy listener: %v", err)
+		}
+	}()
 
 	// Wait for a connection and accept it
 	conn, err := proxyListener.Accept()
-	defer conn.Close()
+	if err != nil {
+		log.Fatalf("failed to accept connection: %v", err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		}
+	}()
 
 	// Print connection details
 	if conn.LocalAddr() == nil {

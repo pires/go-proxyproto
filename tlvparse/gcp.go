@@ -6,8 +6,9 @@ import (
 	"github.com/pires/go-proxyproto"
 )
 
+//nolint:revive // Names follow the spec.
 const (
-	// PP2_TYPE_GCP indicates a Google Cloud Platform header
+	// PP2_TYPE_GCP indicates a Google Cloud Platform header.
 	PP2_TYPE_GCP proxyproto.PP2Type = 0xE0
 )
 

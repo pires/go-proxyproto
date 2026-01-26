@@ -1,3 +1,4 @@
+// Package main provides a proxyproto HTTP server example.
 package main
 
 import (
@@ -14,13 +15,14 @@ import (
 
 func main() {
 	server := http.Server{
-		Addr: ":8080",
+		Addr:              ":8080",
+		ReadHeaderTimeout: 5 * time.Second,
 		ConnState: func(c net.Conn, s http.ConnState) {
 			if s == http.StateNew {
 				log.Printf("[ConnState] %s -> %s", c.LocalAddr().String(), c.RemoteAddr().String())
 			}
 		},
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			log.Printf("[Handler] remote ip %q", r.RemoteAddr)
 		}),
 	}
@@ -34,10 +36,16 @@ func main() {
 		Listener:          ln,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	defer proxyListener.Close()
+	defer func() {
+		if err := proxyListener.Close(); err != nil {
+			log.Printf("failed to close proxy listener: %v", err)
+		}
+	}()
 
 	// Create an HTTP server which can handle proxied incoming connections for
 	// both HTTP/1 and HTTP/2. HTTP/2 support relies on TLS ALPN, the reverse
 	// proxy needs to be configured to accept "h2".
-	h2proxy.NewServer(&server, nil).Serve(proxyListener)
+	if err := h2proxy.NewServer(&server, nil).Serve(proxyListener); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }

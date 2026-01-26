@@ -5,15 +5,16 @@ import (
 	"bytes"
 	iorand "crypto/rand"
 	"encoding/binary"
-	"math/rand"
+	"math/big"
 	"reflect"
+	"strings"
 	"testing"
 )
 
 var (
 	invalidRune = byte('\x99')
 
-	// Lengths to use in tests
+	// Lengths to use in tests.
 	lengthPadded = uint16(84)
 
 	lengthEmptyBytes = func() []byte {
@@ -27,21 +28,21 @@ var (
 		return a
 	}()
 
-	// If life gives you lemons, make mojitos
+	// If life gives you lemons, make mojitos.
 	portBytes = func() []byte {
 		a := make([]byte, 2)
-		binary.BigEndian.PutUint16(a, PORT)
+		binary.BigEndian.PutUint16(a, testValidPort)
 		return a
 	}()
 
 	unixBytes = pad([]byte("socket"), 108)
 
-	// Tests don't care if source and destination addresses and ports are the same
+	// Tests don't care if source and destination addresses and ports are the same.
 	addressesIPv4 = append(v4ip.To4(), v4ip.To4()...)
 	addressesIPv6 = append(v6ip.To16(), v6ip.To16()...)
 	ports         = append(portBytes, portBytes...)
 
-	// Fixtures to use in tests
+	// Fixtures to use in tests.
 	fixtureIPv4Address  = append(addressesIPv4, ports...)
 	fixtureIPv4V2       = append(lengthV4Bytes, fixtureIPv4Address...)
 	fixtureIPv4V2Padded = append(append(lengthPaddedBytes, fixtureIPv4Address...), make([]byte, lengthPadded-lengthV4)...)
@@ -51,7 +52,11 @@ var (
 	fixtureUnixAddress  = append(unixBytes, unixBytes...)
 	fixtureUnixV2       = append(lengthUnixBytes, fixtureUnixAddress...)
 	fixtureTLV          = func() []byte {
-		tlv := make([]byte, 2+rand.Intn(1<<12)) // Not enough to overflow, at least size two
+		n, err := iorand.Int(iorand.Reader, big.NewInt(1<<12))
+		if err != nil {
+			panic(err)
+		}
+		tlv := make([]byte, 2+int(n.Int64())) // Not enough to overflow, at least size two.
 		_, _ = iorand.Read(tlv)
 		return tlv
 	}()
@@ -59,7 +64,7 @@ var (
 	fixtureIPv6V2TLV = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
 	fixtureUnspecTLV = fixtureWithTLV(lengthUnspecBytes, []byte{}, fixtureTLV)
 
-	// Arbitrary bytes following proxy bytes
+	// Arbitrary bytes following proxy bytes.
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
 )
 
@@ -75,7 +80,7 @@ var invalidParseV2Tests = []struct {
 }{
 	{
 		desc:          "no signature",
-		reader:        newBufioReader([]byte(NO_PROTOCOL)),
+		reader:        newBufioReader([]byte(testNoProtocol)),
 		expectedError: ErrNoProxyProtocol,
 	},
 	{
@@ -313,7 +318,9 @@ func TestWriteV2Valid(t *testing.T) {
 			if _, err := tt.expectedHeader.WriteTo(w); err != nil {
 				t.Fatal("unexpected error ", err)
 			}
-			w.Flush()
+			if err := w.Flush(); err != nil {
+				t.Fatal("unexpected error ", err)
+			}
 
 			// Read written bytes to validate written header
 			r := bufio.NewReader(&b)
@@ -519,4 +526,87 @@ func fixtureWithTLV(cur []byte, addr []byte, tlv []byte) []byte {
 	}
 
 	return append(append(tlen, addr...), tlv...)
+}
+
+func Test_parseUnixName(t *testing.T) {
+	tests := []struct {
+		name string // description of this test case
+		// Named input parameters for target function.
+		b    []byte
+		want string
+	}{
+		{
+			name: "simple name, no null terminator",
+			b:    []byte("socketname"),
+			want: "socketname",
+		},
+		{
+			name: "simple name with single null byte",
+			b:    append([]byte("socketname"), 0),
+			want: "socketname",
+		},
+		{
+			name: "long name with null terminator in the middle",
+			b:    append([]byte("sock\000etname"), 0),
+			want: "sock",
+		},
+		{
+			name: "empty input",
+			b:    []byte{},
+			want: "",
+		},
+		{
+			name: "all null bytes",
+			b:    []byte{0, 0, 0},
+			want: "",
+		},
+		{
+			name: "mixed bytes with null at end",
+			b:    append([]byte("abc123"), 0),
+			want: "abc123",
+		},
+		{
+			name: "name with null in middle",
+			b:    []byte{'t', 'e', 0, 's', 't'},
+			want: "te",
+		},
+		{
+			name: "no null, binary data",
+			b:    []byte{0x7f, 0xfe, 0x3c},
+			want: string([]byte{0x7f, 0xfe, 0x3c}),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseUnixName(tt.b)
+			if got != tt.want {
+				t.Errorf("parseUnixName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_formatUnixName(t *testing.T) {
+	maxLen := int(lengthUnix) / 2
+	longName := strings.Repeat("a", maxLen+5)
+	shortName := "socket"
+
+	longFormatted := formatUnixName(longName)
+	if len(longFormatted) != maxLen {
+		t.Fatalf("formatUnixName() length = %d, want %d", len(longFormatted), maxLen)
+	}
+	if got := parseUnixName(longFormatted); got != longName[:maxLen] {
+		t.Errorf("formatUnixName() long parse = %q, want %q", got, longName[:maxLen])
+	}
+
+	shortFormatted := formatUnixName(shortName)
+	if len(shortFormatted) != maxLen {
+		t.Fatalf("formatUnixName() length = %d, want %d", len(shortFormatted), maxLen)
+	}
+	if got := parseUnixName(shortFormatted); got != shortName {
+		t.Errorf("formatUnixName() short parse = %q, want %q", got, shortName)
+	}
+	if !bytes.HasPrefix(shortFormatted, []byte(shortName)) {
+		t.Errorf("formatUnixName() short prefix = %q, want prefix %q", shortFormatted, shortName)
+	}
 }

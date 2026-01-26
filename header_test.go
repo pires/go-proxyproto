@@ -13,24 +13,24 @@ import (
 // Stuff to be used in both versions tests.
 
 const (
-	NO_PROTOCOL   = "There is no spoon"
-	IP4_ADDR      = "127.0.0.1"
-	IP4IN6_ADDR   = "::ffff:127.0.0.1"
-	IP6_ADDR      = "::1"
-	IP6_LONG_ADDR = "1234:5678:9abc:def0:cafe:babe:dead:2bad"
-	PORT          = 65533
-	INVALID_PORT  = 99999
+	testNoProtocol          = "There is no spoon"
+	testLocalhostIP4Addr    = "127.0.0.1"
+	testLocalhostIP4In6Addr = "::ffff:127.0.0.1"
+	testLocalhostIP6Addr    = "::1"
+	testIP6LongAddr         = "1234:5678:9abc:def0:cafe:babe:dead:2bad"
+	testValidPort           = 65533
+	testInvalidPort         = 99999
 )
 
 var (
-	v4ip = net.ParseIP(IP4_ADDR).To4()
-	v6ip = net.ParseIP(IP6_ADDR).To16()
+	v4ip = net.ParseIP(testLocalhostIP4Addr).To4()
+	v6ip = net.ParseIP(testLocalhostIP6Addr).To16()
 
-	v4addr net.Addr = &net.TCPAddr{IP: v4ip, Port: PORT}
-	v6addr net.Addr = &net.TCPAddr{IP: v6ip, Port: PORT}
+	v4addr net.Addr = &net.TCPAddr{IP: v4ip, Port: testValidPort}
+	v6addr net.Addr = &net.TCPAddr{IP: v6ip, Port: testValidPort}
 
-	v4UDPAddr net.Addr = &net.UDPAddr{IP: v4ip, Port: PORT}
-	v6UDPAddr net.Addr = &net.UDPAddr{IP: v6ip, Port: PORT}
+	v4UDPAddr net.Addr = &net.UDPAddr{IP: v4ip, Port: testValidPort}
+	v6UDPAddr net.Addr = &net.UDPAddr{IP: v6ip, Port: testValidPort}
 
 	unixStreamAddr   net.Addr = &net.UnixAddr{Net: "unix", Name: "socket"}
 	unixDatagramAddr net.Addr = &net.UnixAddr{Net: "unixgram", Name: "socket"}
@@ -85,11 +85,11 @@ func TestEqualsTo(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -102,11 +102,11 @@ func TestEqualsTo(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -115,11 +115,11 @@ func TestEqualsTo(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -131,11 +131,11 @@ func TestEqualsTo(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -144,11 +144,11 @@ func TestEqualsTo(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -163,7 +163,7 @@ func TestEqualsTo(t *testing.T) {
 	}
 }
 
-// This is here just because of coveralls
+// This is here just because of coveralls.
 func TestEqualTo(t *testing.T) {
 	TestEqualsTo(t)
 }
@@ -185,24 +185,24 @@ func TestGetters(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
 			tcpSourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
+				IP:   net.ParseIP(testSourceIPv4Addr),
 				Port: 1000,
 			},
 			tcpDestAddr: &net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
-			ipSource:   net.ParseIP("10.1.1.1"),
-			ipDest:     net.ParseIP("20.2.2.2"),
+			ipSource:   net.ParseIP(testSourceIPv4Addr),
+			ipDest:     net.ParseIP(testDestinationIPv4Addr),
 			portSource: 1000,
 			portDest:   2000,
 		},
@@ -213,24 +213,24 @@ func TestGetters(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: UDPv6,
 				SourceAddr: &net.UDPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.UDPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
 			udpSourceAddr: &net.UDPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
+				IP:   net.ParseIP(testSourceIPv4Addr),
 				Port: 1000,
 			},
 			udpDestAddr: &net.UDPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
-			ipSource:   net.ParseIP("10.1.1.1"),
-			ipDest:     net.ParseIP("20.2.2.2"),
+			ipSource:   net.ParseIP(testSourceIPv4Addr),
+			ipDest:     net.ParseIP(testDestinationIPv4Addr),
 			portSource: 1000,
 			portDest:   2000,
 		},
@@ -351,11 +351,11 @@ func TestSetTLVs(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -371,11 +371,11 @@ func TestSetTLVs(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -402,11 +402,11 @@ func TestWriteTo(t *testing.T) {
 		Command:           PROXY,
 		TransportProtocol: TCPv4,
 		SourceAddr: &net.TCPAddr{
-			IP:   net.ParseIP("10.1.1.1"),
+			IP:   net.ParseIP(testSourceIPv4Addr),
 			Port: 1000,
 		},
 		DestinationAddr: &net.TCPAddr{
-			IP:   net.ParseIP("20.2.2.2"),
+			IP:   net.ParseIP(testDestinationIPv4Addr),
 			Port: 2000,
 		},
 	}
@@ -417,11 +417,11 @@ func TestWriteTo(t *testing.T) {
 
 	invalidHeader := &Header{
 		SourceAddr: &net.TCPAddr{
-			IP:   net.ParseIP("10.1.1.1"),
+			IP:   net.ParseIP(testSourceIPv4Addr),
 			Port: 1000,
 		},
 		DestinationAddr: &net.TCPAddr{
-			IP:   net.ParseIP("20.2.2.2"),
+			IP:   net.ParseIP(testDestinationIPv4Addr),
 			Port: 2000,
 		},
 	}
@@ -437,11 +437,11 @@ func TestFormat(t *testing.T) {
 		Command:           PROXY,
 		TransportProtocol: TCPv4,
 		SourceAddr: &net.TCPAddr{
-			IP:   net.ParseIP("10.1.1.1"),
+			IP:   net.ParseIP(testSourceIPv4Addr),
 			Port: 1000,
 		},
 		DestinationAddr: &net.TCPAddr{
-			IP:   net.ParseIP("20.2.2.2"),
+			IP:   net.ParseIP(testDestinationIPv4Addr),
 			Port: 2000,
 		},
 	}
@@ -552,11 +552,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 		{
 			name: "TCPv4",
 			sourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
+				IP:   net.ParseIP(testSourceIPv4Addr),
 				Port: 1000,
 			},
 			destAddr: &net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
 			expected: &Header{
@@ -564,11 +564,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -600,11 +600,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 		{
 			name: "UDPv4",
 			sourceAddr: &net.UDPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
+				IP:   net.ParseIP(testSourceIPv4Addr),
 				Port: 1000,
 			},
 			destAddr: &net.UDPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
 			expected: &Header{
@@ -612,11 +612,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: UDPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -697,11 +697,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 			name:    "Version1",
 			version: 1,
 			sourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
+				IP:   net.ParseIP(testSourceIPv4Addr),
 				Port: 1000,
 			},
 			destAddr: &net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
 			expected: &Header{
@@ -709,11 +709,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: TCPv4,
 				SourceAddr: &net.TCPAddr{
-					IP:   net.ParseIP("10.1.1.1"),
+					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
 				},
 				DestinationAddr: &net.TCPAddr{
-					IP:   net.ParseIP("20.2.2.2"),
+					IP:   net.ParseIP(testDestinationIPv4Addr),
 					Port: 2000,
 				},
 			},
@@ -745,11 +745,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 		{
 			name: "TCPAddrTypeMismatch",
 			sourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
+				IP:   net.ParseIP(testSourceIPv4Addr),
 				Port: 1000,
 			},
 			destAddr: &net.UDPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
 			expected: unspec,
@@ -757,11 +757,11 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 		{
 			name: "UDPAddrTypeMismatch",
 			sourceAddr: &net.UDPAddr{
-				IP:   net.ParseIP("10.1.1.1"),
+				IP:   net.ParseIP(testSourceIPv4Addr),
 				Port: 1000,
 			},
 			destAddr: &net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
 			expected: unspec,
@@ -772,7 +772,7 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 				Net: "unix",
 			},
 			destAddr: &net.TCPAddr{
-				IP:   net.ParseIP("20.2.2.2"),
+				IP:   net.ParseIP(testDestinationIPv4Addr),
 				Port: 2000,
 			},
 			expected: unspec,
