@@ -102,11 +102,10 @@ func TestV2TLVPP2Registered(t *testing.T) {
 	}
 
 	lastType := PP2Type(0xFF)
-	for i := PP2Type(0x00); i < lastType; i++ {
-		if !pp2RegMap[i] {
-			if i.Registered() {
-				t.Fatalf("TestV2TLVPP2Registered: type %x unexpectedly registered", i)
-			}
+	for i := range int(lastType) {
+		p := PP2Type(i)
+		if !pp2RegMap[p] && p.Registered() {
+			t.Fatalf("TestV2TLVPP2Registered: type %x unexpectedly registered", p)
 		}
 	}
 

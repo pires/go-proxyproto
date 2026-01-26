@@ -31,7 +31,8 @@ func ExampleServer() {
 	}
 
 	server := h2proxy.NewServer(&http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("Hello world!\n"))
 		}),
 	}, nil)
@@ -49,24 +50,38 @@ const (
 
 func TestServer_h1(t *testing.T) {
 	addr, server := newTestServer(t)
-	defer server.Close()
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Fatalf("failed to close server: %v", err)
+		}
+	})
 
 	resp, err := http.Get("http://" + addr)
 	if err != nil {
 		t.Fatalf("failed to perform HTTP request: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
 }
 
 func TestServer_h2(t *testing.T) {
 	addr, server := newTestServer(t)
-	defer server.Close()
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Fatalf("failed to close server: %v", err)
+		}
+	})
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Fatalf("failed to close connection: %v", err)
+		}
+	}()
 
 	proxyHeader := proxyproto.Header{
 		Version:           2,
@@ -98,21 +113,31 @@ func TestServer_h2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to perform HTTP request: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
 }
 
 func TestServer_h2_tls(t *testing.T) {
 	addr, server := newTLSTestServer(t)
-	defer server.Close()
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("failed to close server: %v", err)
+		}
+	})
 
 	conn, err := tls.Dial("tcp", addr, &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, //nolint:gosec // skipping certificate verification for testing.
 		NextProtos:         []string{http2.NextProtoTLS},
 	})
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("failed to close connection: %v", err)
+		}
+	}()
 
 	h2Conn, err := new(http2.Transport).NewClientConn(conn)
 	if err != nil {
@@ -128,7 +153,9 @@ func TestServer_h2_tls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to perform HTTP request: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Errorf("failed to close response body: %v", err)
+	}
 }
 
 func newTestServer(t *testing.T) (addr string, server *http.Server) {
@@ -138,7 +165,8 @@ func newTestServer(t *testing.T) (addr string, server *http.Server) {
 	}
 
 	server = &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			if v := r.Context().Value(connContextKey); v == nil {
 				t.Errorf("http.Request.Context missing connContextKey")
 			}
@@ -149,7 +177,7 @@ func newTestServer(t *testing.T) (addr string, server *http.Server) {
 		BaseContext: func(_ net.Listener) context.Context {
 			return context.WithValue(context.Background(), baseContextKey, struct{}{})
 		},
-		ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
+		ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
 			return context.WithValue(ctx, connContextKey, struct{}{})
 		},
 	}
@@ -177,7 +205,8 @@ func newTLSTestServer(t *testing.T) (addr string, server *http.Server) {
 	}
 
 	server = &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			if v := r.Context().Value(connContextKey); v == nil {
 				t.Errorf("http.Request.Context missing connContextKey")
 			}
@@ -188,7 +217,7 @@ func newTLSTestServer(t *testing.T) (addr string, server *http.Server) {
 		BaseContext: func(_ net.Listener) context.Context {
 			return context.WithValue(context.Background(), baseContextKey, struct{}{})
 		},
-		ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
+		ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
 			return context.WithValue(ctx, connContextKey, struct{}{})
 		},
 	}
@@ -248,6 +277,7 @@ func testTLSConfig(t *testing.T) *tls.Config {
 	}
 
 	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{http2.NextProtoTLS},
 	}

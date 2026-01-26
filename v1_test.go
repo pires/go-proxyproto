@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	IPv4AddressesAndPorts        = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
-	IPv4In6AddressesAndPorts     = strings.Join([]string{IP4IN6_ADDR, IP4IN6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
-	IPv4AddressesAndInvalidPorts = strings.Join([]string{IP4_ADDR, IP4_ADDR, strconv.Itoa(INVALID_PORT), strconv.Itoa(INVALID_PORT)}, separator)
-	IPv6AddressesAndPorts        = strings.Join([]string{IP6_ADDR, IP6_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
-	IPv6LongAddressesAndPorts    = strings.Join([]string{IP6_LONG_ADDR, IP6_LONG_ADDR, strconv.Itoa(PORT), strconv.Itoa(PORT)}, separator)
+	IPv4AddressesAndPorts        = strings.Join([]string{testLocalhostIP4Addr, testLocalhostIP4Addr, strconv.Itoa(testValidPort), strconv.Itoa(testValidPort)}, separator)
+	IPv4In6AddressesAndPorts     = strings.Join([]string{testLocalhostIP4In6Addr, testLocalhostIP4In6Addr, strconv.Itoa(testValidPort), strconv.Itoa(testValidPort)}, separator)
+	IPv4AddressesAndInvalidPorts = strings.Join([]string{testLocalhostIP4Addr, testLocalhostIP4Addr, strconv.Itoa(testInvalidPort), strconv.Itoa(testInvalidPort)}, separator)
+	IPv6AddressesAndPorts        = strings.Join([]string{testLocalhostIP6Addr, testLocalhostIP6Addr, strconv.Itoa(testValidPort), strconv.Itoa(testValidPort)}, separator)
+	IPv6LongAddressesAndPorts    = strings.Join([]string{testIP6LongAddr, testIP6LongAddr, strconv.Itoa(testValidPort), strconv.Itoa(testValidPort)}, separator)
 
 	fixtureTCP4V1    = "PROXY TCP4 " + IPv4AddressesAndPorts + crlf + "GET /"
 	fixtureTCP6V1    = "PROXY TCP6 " + IPv6AddressesAndPorts + crlf + "GET /"
@@ -37,7 +37,7 @@ var invalidParseV1Tests = []struct {
 }{
 	{
 		desc:          "no signature",
-		reader:        newBufioReader([]byte(NO_PROTOCOL)),
+		reader:        newBufioReader([]byte(testNoProtocol)),
 		expectedError: ErrNoProxyProtocol,
 	},
 	{
@@ -204,7 +204,9 @@ func TestWriteV1Valid(t *testing.T) {
 			if _, err := tt.expectedHeader.WriteTo(w); err != nil {
 				t.Fatal("unexpected error ", err)
 			}
-			w.Flush()
+			if err := w.Flush(); err != nil {
+				t.Fatal("unexpected error ", err)
+			}
 
 			// Read written bytes to validate written header
 			r := bufio.NewReader(&b)
@@ -232,9 +234,7 @@ func (ds *dataSource) Read(b []byte) (int, error) {
 		return 0, io.EOF
 	}
 	avail := ds.NBytes - ds.NRead
-	if len(b) < avail {
-		avail = len(b)
-	}
+	avail = min(avail, len(b))
 	for i := 0; i < avail; i++ {
 		b[i] = 0x20
 	}
@@ -261,7 +261,7 @@ func listen(t *testing.T) *Listener {
 	return &Listener{Listener: l}
 }
 
-func client(t *testing.T, addr, header string, length int, terminate bool, wait time.Duration, done chan struct{},
+func client(_ *testing.T, addr, header string, length int, terminate bool, wait time.Duration, done chan struct{},
 	result chan error,
 ) {
 	c, err := net.Dial("tcp", addr)
@@ -269,7 +269,9 @@ func client(t *testing.T, addr, header string, length int, terminate bool, wait 
 		result <- fmt.Errorf("dial: %w", err)
 		return
 	}
-	defer c.Close()
+	defer func() {
+		_ = c.Close()
+	}()
 
 	if terminate && length < 2 {
 		length = 2

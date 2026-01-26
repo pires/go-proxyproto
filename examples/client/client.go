@@ -1,3 +1,4 @@
+// Package main provides a proxyproto client example.
 package main
 
 import (
@@ -22,7 +23,9 @@ func main() {
 	conn, err := net.DialTCP("tcp", nil, target)
 	chkErr(err)
 
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Create a proxyprotocol header or use HeaderProxyFromAddrs() if you
 	// have two conn's

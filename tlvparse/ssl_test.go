@@ -7,6 +7,9 @@ import (
 	"github.com/pires/go-proxyproto"
 )
 
+// tlsVersion13 is the TLS version 1.3 string.
+const tlsVersion13 string = "TLSv1.3"
+
 var testCases = []struct {
 	name  string
 	raw   []byte
@@ -67,7 +70,7 @@ var testCases = []struct {
 				t.Fatalf("TestParseV2TLV %s: Unexpected ClientCN expected %#v, actual %#v", name, ecn, acn)
 			}
 
-			esslVer := "TLSv1.3"
+			esslVer := tlsVersion13
 			if asslVer, ok := ssl.SSLVersion(); !ok {
 				t.Fatalf("TestParseV2TLV %s: Expected SSLVersion to exist", name)
 			} else if asslVer != esslVer {
