@@ -1984,6 +1984,60 @@ func TestCopyFromWrappedConnectionToWrappedConnection(t *testing.T) {
 	}
 }
 
+// chunkedConn wraps a net.Conn and limits reads to simulate TCP chunking.
+type chunkedConn struct {
+	net.Conn
+	maxRead int
+}
+
+func (c *chunkedConn) Read(b []byte) (int, error) {
+	if len(b) > c.maxRead {
+		b = b[:c.maxRead]
+	}
+	return c.Conn.Read(b)
+}
+
+// TestConnReadTruncatesData demonstrates that Conn.Read() only returns
+// buffered data when the initial TCP read is smaller than the payload.
+func TestConnReadTruncatesData(t *testing.T) {
+	const payloadSize = 400
+
+	proxyHeader := []byte("PROXY TCP4 192.168.1.1 192.168.1.2 12345 443\r\n")
+	payload := bytes.Repeat([]byte("X"), payloadSize)
+	fullData := append(proxyHeader, payload...)
+
+	serverConn, clientConn := net.Pipe()
+	defer func() {
+		serverCloseErr := serverConn.Close()
+		clientCloseErr := clientConn.Close()
+		if serverCloseErr != nil || clientCloseErr != nil {
+			t.Errorf("failed to close connection: %v, %v", serverCloseErr, clientCloseErr)
+		}
+	}()
+
+	go func() {
+		_, _ = clientConn.Write(fullData)
+	}()
+
+	// Simulate TCP delivering only 256 bytes in first read
+	chunked := &chunkedConn{Conn: serverConn, maxRead: 256}
+
+	// Create a ProxyProto-wrapped connection
+	conn := NewConn(chunked)
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+
+	buf := make([]byte, 16384)
+	n, _ := conn.Read(buf)
+
+	t.Logf("Sent: %d bytes payload (after %d byte PROXY header)", payloadSize, len(proxyHeader))
+	t.Logf("Read: %d bytes", n)
+
+	if n < payloadSize {
+		t.Errorf("BUG: Read returned %d bytes, expected %d (lost %d bytes)",
+			n, payloadSize, payloadSize-n)
+	}
+}
+
 func benchmarkTCPProxy(size int, b *testing.B) {
 	// create and start the echo backend
 	backend, err := net.Listen("tcp", testLocalhostRandomPort)
