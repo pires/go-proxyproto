@@ -155,8 +155,9 @@ func (p *Listener) Addr() net.Addr {
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	// For v1 the header length is at most 108 bytes.
 	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
-	// We use 256 bytes to be safe.
-	const bufSize = 256
+	// PP2_SUBTYPE_SSL_CLIENT_CERT might be a few kilobytes. We use 4096 bytes
+	// to be safe.
+	const bufSize = 4096
 	br := bufio.NewReaderSize(conn, bufSize)
 
 	pConn := &Conn{
