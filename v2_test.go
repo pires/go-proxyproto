@@ -15,7 +15,8 @@ var (
 	invalidRune = byte('\x99')
 
 	// Lengths to use in tests.
-	lengthPadded = uint16(84)
+	lengthPadded       = uint16(84)
+	lengthTLVsTooLarge = uint16(10 * 1024)
 
 	lengthEmptyBytes = func() []byte {
 		a := make([]byte, 2)
@@ -25,6 +26,11 @@ var (
 	lengthPaddedBytes = func() []byte {
 		a := make([]byte, 2)
 		binary.BigEndian.PutUint16(a, lengthPadded)
+		return a
+	}()
+	lengthTLVsTooLargeBytes = func() []byte {
+		a := make([]byte, 2)
+		binary.BigEndian.PutUint16(a, lengthTLVsTooLarge)
 		return a
 	}()
 
@@ -60,9 +66,10 @@ var (
 		_, _ = iorand.Read(tlv)
 		return tlv
 	}()
-	fixtureIPv4V2TLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureTLV)
-	fixtureIPv6V2TLV = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
-	fixtureUnspecTLV = fixtureWithTLV(lengthUnspecBytes, []byte{}, fixtureTLV)
+	fixtureIPv4V2TLV    = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureTLV)
+	fixtureIPv6V2TLV    = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
+	fixtureUnspecTLV    = fixtureWithTLV(lengthUnspecBytes, []byte{}, fixtureTLV)
+	fixtureTLVsTooLarge = append(append(lengthTLVsTooLargeBytes, fixtureIPv4Address...), make([]byte, lengthTLVsTooLarge-lengthV4)...)
 
 	// Arbitrary bytes following proxy bytes.
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
@@ -151,6 +158,11 @@ var invalidParseV2Tests = []struct {
 	{
 		desc:          "unspec length greater than zero but no TLVs",
 		reader:        newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), fixtureUnspecTLV[:2]...)),
+		expectedError: ErrInvalidLength,
+	},
+	{
+		desc:          "TCPv4 with length too large",
+		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureTLVsTooLarge...)),
 		expectedError: ErrInvalidLength,
 	},
 }
