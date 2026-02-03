@@ -52,7 +52,6 @@ type Conn struct {
 	readErr           error
 	conn              net.Conn
 	bufReader         *bufio.Reader
-	reader            io.Reader
 	header            *Header
 	ProxyHeaderPolicy Policy
 	Validate          Validator
@@ -161,7 +160,6 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 
 	pConn := &Conn{
 		bufReader: br,
-		reader:    io.MultiReader(br, conn),
 		conn:      conn,
 	}
 
@@ -183,7 +181,21 @@ func (p *Conn) Read(b []byte) (int, error) {
 		return 0, p.readErr
 	}
 
-	return p.reader.Read(b)
+	// First drain any buffered data from header parsing,
+	// then read directly from the underlying connection.
+	n := 0
+	if p.bufReader != nil && p.bufReader.Buffered() > 0 {
+		n, _ = p.bufReader.Read(b)
+		if p.bufReader.Buffered() == 0 {
+			p.bufReader = nil
+		}
+	}
+
+	if n < len(b) {
+		nn, err := p.conn.Read(b[n:])
+		return n + nn, err
+	}
+	return n, nil
 }
 
 // Write wraps original conn.Write.
