@@ -159,7 +159,7 @@ func TestParseV2Invalid(t *testing.T) {
 	for _, tt := range invalidParseV2Tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			if _, err := Read(tt.reader); err != tt.expectedError {
-				t.Fatalf("expected %s, actual %s", tt.expectedError, err.Error())
+				t.Fatalf("expected %v, actual %v", tt.expectedError, err)
 			}
 		})
 	}
