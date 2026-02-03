@@ -18,37 +18,37 @@ var (
 	SIGV2 = []byte{'\x0D', '\x0A', '\x0D', '\x0A', '\x00', '\x0D', '\x0A', '\x51', '\x55', '\x49', '\x54', '\x0A'}
 
 	// ErrCantReadVersion1Header indicates a v1 header could not be read.
-	ErrCantReadVersion1Header               = errors.New("proxyproto: can't read version 1 header")
-	// ErrVersion1HeaderTooLong indicates a v1 header is too long.	
-	ErrVersion1HeaderTooLong                = errors.New("proxyproto: version 1 header must be 107 bytes or less")
+	ErrCantReadVersion1Header = errors.New("proxyproto: can't read version 1 header")
+	// ErrVersion1HeaderTooLong indicates a v1 header is too long.
+	ErrVersion1HeaderTooLong = errors.New("proxyproto: version 1 header must be 107 bytes or less")
 	// ErrLineMustEndWithCrlf indicates a v1 header is invalid, must end with \r\n.
-	ErrLineMustEndWithCrlf                  = errors.New("proxyproto: version 1 header is invalid, must end with \\r\\n")
+	ErrLineMustEndWithCrlf = errors.New("proxyproto: version 1 header is invalid, must end with \\r\\n")
 	// ErrCantReadProtocolVersionAndCommand indicates a protocol version and command could not be read.
-	ErrCantReadProtocolVersionAndCommand    = errors.New("proxyproto: can't read proxy protocol version and command")
+	ErrCantReadProtocolVersionAndCommand = errors.New("proxyproto: can't read proxy protocol version and command")
 	// ErrCantReadAddressFamilyAndProtocol indicates an address family and protocol could not be read.
-	ErrCantReadAddressFamilyAndProtocol     = errors.New("proxyproto: can't read address family or protocol")
+	ErrCantReadAddressFamilyAndProtocol = errors.New("proxyproto: can't read address family or protocol")
 	// ErrCantReadLength indicates a length could not be read.
-	ErrCantReadLength                       = errors.New("proxyproto: can't read length")
+	ErrCantReadLength = errors.New("proxyproto: can't read length")
 	// ErrCantResolveSourceUnixAddress indicates a source Unix address could not be resolved.
-	ErrCantResolveSourceUnixAddress         = errors.New("proxyproto: can't resolve source Unix address")
+	ErrCantResolveSourceUnixAddress = errors.New("proxyproto: can't resolve source Unix address")
 	// ErrCantResolveDestinationUnixAddress indicates a destination Unix address could not be resolved.
-	ErrCantResolveDestinationUnixAddress    = errors.New("proxyproto: can't resolve destination Unix address")
+	ErrCantResolveDestinationUnixAddress = errors.New("proxyproto: can't resolve destination Unix address")
 	// ErrNoProxyProtocol indicates a proxy protocol signature is not present.
-	ErrNoProxyProtocol                      = errors.New("proxyproto: proxy protocol signature not present")
+	ErrNoProxyProtocol = errors.New("proxyproto: proxy protocol signature not present")
 	// ErrUnknownProxyProtocolVersion indicates an unknown proxy protocol version.
-	ErrUnknownProxyProtocolVersion          = errors.New("proxyproto: unknown proxy protocol version")
+	ErrUnknownProxyProtocolVersion = errors.New("proxyproto: unknown proxy protocol version")
 	// ErrUnsupportedProtocolVersionAndCommand indicates an unsupported protocol version and command.
 	ErrUnsupportedProtocolVersionAndCommand = errors.New("proxyproto: unsupported proxy protocol version and command")
 	// ErrUnsupportedAddressFamilyAndProtocol indicates an unsupported address family and protocol.
-	ErrUnsupportedAddressFamilyAndProtocol  = errors.New("proxyproto: unsupported address family and protocol")
+	ErrUnsupportedAddressFamilyAndProtocol = errors.New("proxyproto: unsupported address family and protocol")
 	// ErrInvalidLength indicates an invalid length.
-	ErrInvalidLength                        = errors.New("proxyproto: invalid length")
+	ErrInvalidLength = errors.New("proxyproto: invalid length")
 	// ErrInvalidAddress indicates an invalid address.
-	ErrInvalidAddress                       = errors.New("proxyproto: invalid address")
+	ErrInvalidAddress = errors.New("proxyproto: invalid address")
 	// ErrInvalidPortNumber indicates an invalid port number.
-	ErrInvalidPortNumber                    = errors.New("proxyproto: invalid port number")
+	ErrInvalidPortNumber = errors.New("proxyproto: invalid port number")
 	// ErrSuperfluousProxyHeader indicates an upstream connection sent a PROXY header but isn't allowed to send one.
-	ErrSuperfluousProxyHeader               = errors.New("proxyproto: upstream connection sent PROXY header but isn't allowed to send one")
+	ErrSuperfluousProxyHeader = errors.New("proxyproto: upstream connection sent PROXY header but isn't allowed to send one")
 )
 
 // Header is the placeholder for proxy protocol header.

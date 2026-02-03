@@ -13,7 +13,7 @@ import (
 //nolint:revive // Names follow the spec.
 const (
 	// PP2_TYPE_AWS identifies AWS TLV extensions.
-	PP2_TYPE_AWS            = 0xEA
+	PP2_TYPE_AWS = 0xEA
 	// PP2_SUBTYPE_AWS_VPCE_ID identifies the VPC endpoint ID subtype.
 	PP2_SUBTYPE_AWS_VPCE_ID = 0x01
 )
