@@ -61,7 +61,6 @@ type Conn struct {
 	readErr           error
 	conn              net.Conn
 	bufReader         *bufio.Reader
-	reader            io.Reader
 	header            *Header
 	ProxyHeaderPolicy Policy
 	Validate          Validator
@@ -171,7 +170,6 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 
 	pConn := &Conn{
 		bufReader: br,
-		reader:    io.MultiReader(br, conn),
 		conn:      conn,
 	}
 
@@ -191,7 +189,31 @@ func (p *Conn) Read(b []byte) (int, error) {
 		return 0, err
 	}
 
-	return p.reader.Read(b)
+	// Drain the buffer if it exists and has data.
+	if p.bufReader != nil {
+		if p.bufReader.Buffered() > 0 {
+			n, err := p.bufReader.Read(b)
+
+			// Did we empty the buffer?
+			// Buffering a net.Conn means the buffer doesn't return io.EOF until the connection returns io.EOF.
+			// Therefore, we use Buffered() == 0 to detect if we are done with the buffer.
+			if p.bufReader.Buffered() == 0 {
+				// Garbage collect the buffer.
+				p.bufReader = nil
+			}
+
+			// Return immediately. Do not touch p.conn.
+			// If err is EOF here, it means the connection is actually closed,
+			// so we should return that error to the user anyway.
+			return n, err
+		}
+		// If buffer was empty to begin with (shouldn't happen with the >0 check
+		// but good for safety), clear it.
+		p.bufReader = nil
+	}
+
+	// From now on, read directly from the underlying connection.
+	return p.conn.Read(b)
 }
 
 // Write wraps original conn.Write.
