@@ -2384,9 +2384,9 @@ func (c *chunkedConn) Read(b []byte) (int, error) {
 	return c.Conn.Read(b)
 }
 
-// TestConnReadTruncatesData demonstrates that Conn.Read() only returns
-// buffered data when the initial TCP read is smaller than the payload.
-func TestConnReadTruncatesData(t *testing.T) {
+// TestConnReadHandlesChunkedPayload verifies Conn.Read does not drop data
+// when the initial TCP read is smaller than the payload.
+func TestConnReadHandlesChunkedPayload(t *testing.T) {
 	const payloadSize = 400
 
 	proxyHeader := []byte("PROXY TCP4 192.168.1.1 192.168.1.2 12345 443\r\n")
@@ -2404,24 +2404,38 @@ func TestConnReadTruncatesData(t *testing.T) {
 
 	go func() {
 		_, _ = clientConn.Write(fullData)
+		_ = clientConn.Close()
 	}()
 
-	// Simulate TCP delivering only 256 bytes in first read
+	// Simulate TCP delivering only 256 bytes in first read.
 	chunked := &chunkedConn{Conn: serverConn, maxRead: 256}
 
-	// Create a ProxyProto-wrapped connection
+	// Create a ProxyProto-wrapped connection.
 	conn := NewConn(chunked)
-	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
-
-	buf := make([]byte, 16384)
-	n, _ := conn.Read(buf)
+	buf := make([]byte, 64)
+	readPayload := make([]byte, 0, payloadSize)
+	for len(readPayload) < payloadSize {
+		_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+		n, err := conn.Read(buf)
+		if err != nil && err != io.EOF {
+			t.Fatalf("unexpected read error: %v", err)
+		}
+		if n > 0 {
+			readPayload = append(readPayload, buf[:n]...)
+		}
+		if err == io.EOF {
+			break
+		}
+	}
 
 	t.Logf("Sent: %d bytes payload (after %d byte PROXY header)", payloadSize, len(proxyHeader))
-	t.Logf("Read: %d bytes", n)
+	t.Logf("Read: %d bytes", len(readPayload))
 
-	if n < payloadSize {
-		t.Errorf("BUG: Read returned %d bytes, expected %d (lost %d bytes)",
-			n, payloadSize, payloadSize-n)
+	if len(readPayload) != payloadSize {
+		t.Fatalf("read %d bytes, expected %d", len(readPayload), payloadSize)
+	}
+	if !bytes.Equal(readPayload, payload) {
+		t.Fatalf("payload mismatch")
 	}
 }
 
