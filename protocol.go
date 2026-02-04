@@ -2,6 +2,8 @@ package proxyproto
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -155,7 +157,8 @@ func (p *Listener) Addr() net.Addr {
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	// For v1 the header length is at most 108 bytes.
 	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
-	// We use 256 bytes to be safe.
+	// We start small to save memory on idle connections, but readHeader()
+	// will grow the buffer if a large v2 header is detected.
 	const bufSize = 256
 	br := bufio.NewReaderSize(conn, bufSize)
 
@@ -300,6 +303,24 @@ func (p *Conn) readHeader() error {
 		}
 	}
 
+	// Peek only the fixed 16-byte v2 preamble to decide whether we should
+	// expand the buffer for a large header. This is a best-effort check that
+	// does not consume bytes; it avoids allocations unless the header looks
+	// well-formed enough to trust its length field.
+	// We need 16 bytes: 12 (Signature) + 1 (Version/Command) + 1 (Transport) + 2 (Length).
+	if p.bufReader != nil {
+		peeked, err := p.bufReader.Peek(16)
+		if err == nil {
+			if totalSize, ok := v2PreflightHeaderSize(peeked); ok {
+				// If the header is larger than our current buffer, wrap the existing
+				// reader in a larger one. This preserves any bytes already buffered.
+				if totalSize > p.bufReader.Size() {
+					p.bufReader = bufio.NewReaderSize(p.bufReader, totalSize)
+				}
+			}
+		}
+	}
+
 	header, err := Read(p.bufReader)
 
 	// If the connection's readHeaderTimeout is more than 0, undo the change to the
@@ -350,6 +371,36 @@ func (p *Conn) readHeader() error {
 	}
 
 	return err
+}
+
+// v2PreflightHeaderSize validates the v2 preamble (signature + command +
+// transport + minimum length) and returns the total header size.
+// It is intentionally conservative: if anything looks suspicious, it returns false
+// so that we do not resize based on an attacker-controlled length field.
+func v2PreflightHeaderSize(peeked []byte) (int, bool) {
+	if len(peeked) < 16 {
+		return 0, false
+	}
+	if !bytes.Equal(peeked[:12], SIGV2) {
+		return 0, false
+	}
+
+	command := ProtocolVersionAndCommand(peeked[12])
+	if _, ok := supportedCommand[command]; !ok {
+		return 0, false
+	}
+
+	transport := AddressFamilyAndProtocol(peeked[13])
+	if transport == UNSPEC && command != LOCAL {
+		return 0, false
+	}
+
+	length := binary.BigEndian.Uint16(peeked[14:16])
+	if !(&Header{TransportProtocol: transport}).validateLength(length) {
+		return 0, false
+	}
+
+	return 16 + int(length), true
 }
 
 // ReadFrom implements the io.ReaderFrom ReadFrom method.

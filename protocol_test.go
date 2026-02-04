@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -1981,6 +1982,56 @@ func TestCopyFromWrappedConnectionToWrappedConnection(t *testing.T) {
 	}
 	if innerConn1.readFromCalledWith != innerConn2 {
 		t.Errorf("Expected io.Copy to pass inner source connection to ReadFrom of inner destination connection")
+	}
+}
+
+func TestConnReadHeaderResizesForLargeV2(t *testing.T) {
+	const payloadLength = 400
+	length := uint16(payloadLength)
+
+	payload := make([]byte, payloadLength)
+	copy(payload[0:4], net.ParseIP(testSourceIPv4Addr).To4())
+	copy(payload[4:8], net.ParseIP(testDestinationIPv4Addr).To4())
+	binary.BigEndian.PutUint16(payload[8:10], 1000)
+	binary.BigEndian.PutUint16(payload[10:12], 2000)
+	for i := 12; i < len(payload); i++ {
+		payload[i] = 0x99
+	}
+
+	header := make([]byte, 16)
+	copy(header[:12], SIGV2)
+	header[12] = byte(PROXY)
+	header[13] = byte(TCPv4)
+	binary.BigEndian.PutUint16(header[14:16], length)
+	fullData := append(header, payload...)
+
+	serverConn, clientConn := net.Pipe()
+	t.Cleanup(func() {
+		if closeErr := serverConn.Close(); closeErr != nil {
+			t.Errorf("failed to close server connection: %v", closeErr)
+		}
+		if closeErr := clientConn.Close(); closeErr != nil {
+			t.Errorf("failed to close client connection: %v", closeErr)
+		}
+	})
+
+	go func() {
+		_, _ = clientConn.Write(fullData)
+		_ = clientConn.Close()
+	}()
+
+	conn := NewConn(serverConn)
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+
+	headerResult := conn.ProxyHeader()
+	if conn.readErr != nil {
+		t.Fatalf("unexpected read header error: %v", conn.readErr)
+	}
+	if headerResult == nil {
+		t.Fatalf("expected header, got nil")
+	}
+	if conn.bufReader == nil || conn.bufReader.Size() < 16+int(length) {
+		t.Fatalf("expected buffer size >= %d, got %d", 16+int(length), conn.bufReader.Size())
 	}
 }
 

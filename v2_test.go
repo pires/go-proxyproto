@@ -165,6 +165,79 @@ func TestParseV2Invalid(t *testing.T) {
 	}
 }
 
+func TestV2PreflightHeaderSize(t *testing.T) {
+	build := func(command ProtocolVersionAndCommand, transport AddressFamilyAndProtocol, length uint16) []byte {
+		header := make([]byte, 16)
+		copy(header[:12], SIGV2)
+		header[12] = byte(command)
+		header[13] = byte(transport)
+		binary.BigEndian.PutUint16(header[14:16], length)
+		return header
+	}
+
+	tests := []struct {
+		desc       string
+		peeked     []byte
+		wantSize   int
+		wantAccept bool
+	}{
+		{
+			desc:       "valid unspec local length zero",
+			peeked:     build(LOCAL, UNSPEC, 0),
+			wantSize:   16,
+			wantAccept: true,
+		},
+		{
+			desc:       "valid proxy tcpv4",
+			peeked:     build(PROXY, TCPv4, lengthV4),
+			wantSize:   16 + int(lengthV4),
+			wantAccept: true,
+		},
+		{
+			desc:       "short preamble",
+			peeked:     SIGV2,
+			wantSize:   0,
+			wantAccept: false,
+		},
+		{
+			desc:       "non v2 signature",
+			peeked:     build(PROXY, TCPv4, lengthV4)[1:],
+			wantSize:   0,
+			wantAccept: false,
+		},
+		{
+			desc:       "unsupported command",
+			peeked:     build(ProtocolVersionAndCommand(invalidRune), TCPv4, lengthV4),
+			wantSize:   0,
+			wantAccept: false,
+		},
+		{
+			desc:       "unspec with proxy command",
+			peeked:     build(PROXY, UNSPEC, 0),
+			wantSize:   0,
+			wantAccept: false,
+		},
+		{
+			desc:       "invalid length for tcpv4",
+			peeked:     build(PROXY, TCPv4, 0),
+			wantSize:   0,
+			wantAccept: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			gotSize, gotAccept := v2PreflightHeaderSize(tt.peeked)
+			if gotAccept != tt.wantAccept {
+				t.Fatalf("accept=%v, want=%v", gotAccept, tt.wantAccept)
+			}
+			if gotSize != tt.wantSize {
+				t.Fatalf("size=%d, want=%d", gotSize, tt.wantSize)
+			}
+		})
+	}
+}
+
 var validParseAndWriteV2Tests = []struct {
 	desc           string
 	reader         *bufio.Reader
