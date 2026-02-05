@@ -223,6 +223,47 @@ func TestUseWithReadHeaderTimeout(t *testing.T) {
 	}
 }
 
+func TestNewConnSetReadHeaderTimeoutOption(t *testing.T) {
+	conn, peer := net.Pipe()
+	t.Cleanup(func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Errorf("failed to close connection: %v", closeErr)
+		}
+	})
+	t.Cleanup(func() {
+		if closeErr := peer.Close(); closeErr != nil {
+			t.Errorf("failed to close peer connection: %v", closeErr)
+		}
+	})
+
+	// Ensure SetReadHeaderTimeout sets the connection-specific timeout.
+	timeout := 150 * time.Millisecond
+	proxyConn := NewConn(conn, SetReadHeaderTimeout(timeout))
+	if proxyConn.readHeaderTimeout != timeout {
+		t.Fatalf("expected readHeaderTimeout %v, got %v", timeout, proxyConn.readHeaderTimeout)
+	}
+}
+
+func TestNewConnSetReadHeaderTimeoutIgnoresNegative(t *testing.T) {
+	conn, peer := net.Pipe()
+	t.Cleanup(func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Errorf("failed to close connection: %v", closeErr)
+		}
+	})
+	t.Cleanup(func() {
+		if closeErr := peer.Close(); closeErr != nil {
+			t.Errorf("failed to close peer connection: %v", closeErr)
+		}
+	})
+
+	// Negative values should be ignored, leaving the timeout unset.
+	proxyConn := NewConn(conn, SetReadHeaderTimeout(-1))
+	if proxyConn.readHeaderTimeout != 0 {
+		t.Fatalf("expected readHeaderTimeout to remain 0, got %v", proxyConn.readHeaderTimeout)
+	}
+}
+
 func TestReadHeaderTimeoutRespectsEarlierDeadline(t *testing.T) {
 	const (
 		headerTimeout = 200 * time.Millisecond
@@ -2038,6 +2079,54 @@ type testConn struct {
 	net.Conn           // nil; crash on any unexpected use
 }
 
+type deadlineConn struct {
+	deadline      time.Time
+	readDeadline  time.Time
+	writeDeadline time.Time
+}
+
+func (c *deadlineConn) Read(_ []byte) (int, error)  { return 0, io.EOF }
+func (c *deadlineConn) Write(p []byte) (int, error) { return len(p), nil }
+func (c *deadlineConn) Close() error                { return nil }
+func (c *deadlineConn) LocalAddr() net.Addr         { return dummyAddr("local") }
+func (c *deadlineConn) RemoteAddr() net.Addr        { return dummyAddr("remote") }
+func (c *deadlineConn) SetDeadline(t time.Time) error {
+	c.deadline = t
+	return nil
+}
+func (c *deadlineConn) SetReadDeadline(t time.Time) error {
+	c.readDeadline = t
+	return nil
+}
+func (c *deadlineConn) SetWriteDeadline(t time.Time) error {
+	c.writeDeadline = t
+	return nil
+}
+
+type noReadFromConn struct {
+	written bytes.Buffer
+}
+
+func (c *noReadFromConn) Read(_ []byte) (int, error) { return 0, io.EOF }
+func (c *noReadFromConn) Write(p []byte) (int, error) {
+	return c.written.Write(p)
+}
+func (c *noReadFromConn) Close() error                { return nil }
+func (c *noReadFromConn) LocalAddr() net.Addr         { return dummyAddr("local") }
+func (c *noReadFromConn) RemoteAddr() net.Addr        { return dummyAddr("remote") }
+func (c *noReadFromConn) SetDeadline(time.Time) error { return nil }
+func (c *noReadFromConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+func (c *noReadFromConn) SetWriteDeadline(time.Time) error {
+	return nil
+}
+
+type dummyAddr string
+
+func (a dummyAddr) Network() string { return "dummy" }
+func (a dummyAddr) String() string  { return string(a) }
+
 func (c *testConn) ReadFrom(r io.Reader) (int64, error) {
 	c.readFromCalledWith = r
 	b, err := io.ReadAll(r)
@@ -2092,6 +2181,127 @@ func TestCopyFromWrappedConnectionToWrappedConnection(t *testing.T) {
 	}
 	if innerConn1.readFromCalledWith != innerConn2 {
 		t.Errorf("Expected io.Copy to pass inner source connection to ReadFrom of inner destination connection")
+	}
+}
+
+func TestDeadlineWrappersDelegate(t *testing.T) {
+	conn := &deadlineConn{}
+	proxyConn := NewConn(conn)
+
+	deadline := time.Now().Add(2 * time.Second)
+	readDeadline := time.Now().Add(3 * time.Second)
+	writeDeadline := time.Now().Add(4 * time.Second)
+
+	// Ensure deadline setters pass through to the underlying connection.
+	if err := proxyConn.SetDeadline(deadline); err != nil {
+		t.Fatalf("unexpected SetDeadline error: %v", err)
+	}
+	if err := proxyConn.SetReadDeadline(readDeadline); err != nil {
+		t.Fatalf("unexpected SetReadDeadline error: %v", err)
+	}
+	if err := proxyConn.SetWriteDeadline(writeDeadline); err != nil {
+		t.Fatalf("unexpected SetWriteDeadline error: %v", err)
+	}
+
+	if !conn.deadline.Equal(deadline) {
+		t.Fatalf("SetDeadline did not pass through value")
+	}
+	if !conn.readDeadline.Equal(readDeadline) {
+		t.Fatalf("SetReadDeadline did not pass through value")
+	}
+	if !conn.writeDeadline.Equal(writeDeadline) {
+		t.Fatalf("SetWriteDeadline did not pass through value")
+	}
+}
+
+func TestReadFromFallbackCopiesToConn(t *testing.T) {
+	conn := &noReadFromConn{}
+	proxyConn := NewConn(conn)
+
+	payload := []byte("payload")
+	if _, err := proxyConn.ReadFrom(bytes.NewReader(payload)); err != nil {
+		t.Fatalf("unexpected ReadFrom error: %v", err)
+	}
+
+	// When the inner connection does not implement io.ReaderFrom,
+	// ReadFrom should fall back to io.Copy and write the payload.
+	if !bytes.Equal(conn.written.Bytes(), payload) {
+		t.Fatalf("unexpected write content: %q", conn.written.String())
+	}
+}
+
+func TestWriteToDrainsBufferedData(t *testing.T) {
+	l, err := net.Listen("tcp", testLocalhostRandomPort)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	pl := &Listener{Listener: l}
+
+	header := &Header{
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP(testSourceIPv4Addr),
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP(testDestinationIPv4Addr),
+			Port: 2000,
+		},
+	}
+
+	payload := []byte("ping")
+
+	cliResult := make(chan error)
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			cliResult <- err
+			return
+		}
+
+		// Write the header followed by payload to populate the reader buffer.
+		if _, err := header.WriteTo(conn); err != nil {
+			cliResult <- err
+			return
+		}
+		if _, err := conn.Write(payload); err != nil {
+			cliResult <- err
+			return
+		}
+
+		// Close the client so WriteTo's io.Copy completes.
+		if err := conn.Close(); err != nil {
+			cliResult <- err
+			return
+		}
+
+		close(cliResult)
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Errorf("failed to close connection: %v", closeErr)
+		}
+	})
+
+	var out bytes.Buffer
+	if _, err := conn.(*Conn).WriteTo(&out); err != nil {
+		t.Fatalf("unexpected WriteTo error: %v", err)
+	}
+	if !bytes.Equal(out.Bytes(), payload) {
+		t.Fatalf("unexpected WriteTo output: %q", out.String())
+	}
+
+	err = <-cliResult
+	if err != nil {
+		t.Fatalf("client error: %v", err)
 	}
 }
 
