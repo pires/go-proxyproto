@@ -5,7 +5,6 @@ import (
 	"bytes"
 	iorand "crypto/rand"
 	"encoding/binary"
-	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -52,11 +51,7 @@ var (
 	fixtureUnixAddress  = append(unixBytes, unixBytes...)
 	fixtureUnixV2       = append(lengthUnixBytes, fixtureUnixAddress...)
 	fixtureTLV          = func() []byte {
-		n, err := iorand.Int(iorand.Reader, big.NewInt(1<<12))
-		if err != nil {
-			panic(err)
-		}
-		tlv := make([]byte, 2+int(n.Int64())) // Not enough to overflow, at least size two.
+		tlv := make([]byte, 100)
 		_, _ = iorand.Read(tlv)
 		return tlv
 	}()
