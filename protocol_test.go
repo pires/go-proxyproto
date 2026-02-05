@@ -2374,14 +2374,21 @@ func TestWriteToDrainsBufferedData(t *testing.T) {
 // chunkedConn wraps a net.Conn and limits reads to simulate TCP chunking.
 type chunkedConn struct {
 	net.Conn
-	maxRead int
+	maxRead   int
+	readCalls int
+	bytesRead int
 }
 
 func (c *chunkedConn) Read(b []byte) (int, error) {
 	if len(b) > c.maxRead {
 		b = b[:c.maxRead]
 	}
-	return c.Conn.Read(b)
+	n, err := c.Conn.Read(b)
+	if n > 0 {
+		c.readCalls++
+		c.bytesRead += n
+	}
+	return n, err
 }
 
 // TestConnReadHandlesChunkedPayload verifies Conn.Read does not drop data
@@ -2436,6 +2443,18 @@ func TestConnReadHandlesChunkedPayload(t *testing.T) {
 	}
 	if !bytes.Equal(readPayload, payload) {
 		t.Fatalf("payload mismatch")
+	}
+
+	// Ensure the proxy connection read from the underlying conn
+	// and drained all bytes, not just buffered reads.
+	if chunked.readCalls == 0 {
+		t.Fatalf("expected underlying reads to occur")
+	}
+	if chunked.bytesRead <= len(proxyHeader) {
+		t.Fatalf("expected reads beyond header, got %d bytes", chunked.bytesRead)
+	}
+	if chunked.bytesRead != len(fullData) {
+		t.Fatalf("underlying reads=%d bytes, expected %d", chunked.bytesRead, len(fullData))
 	}
 }
 
