@@ -103,7 +103,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 
 	// Make sure there are bytes available as specified in length
 	var length uint16
-	if err := binary.Read(io.LimitReader(reader, 2), binary.BigEndian, &length); err != nil {
+	if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
 		return nil, ErrCantReadLength
 	}
 	if !header.validateLength(length) {
