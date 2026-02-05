@@ -106,6 +106,9 @@ func (srv *Server) Serve(ln net.Listener) error {
 			srv.errorLog().Printf("listener %q: accept error (retrying in %v): %v", ln.Addr(), delay, err)
 			time.Sleep(delay)
 		} else if err != nil {
+			if srv.isClosed() {
+				return http.ErrServerClosed
+			}
 			return fmt.Errorf("failed to accept connection: %w", err)
 		}
 
@@ -196,6 +199,12 @@ func (srv *Server) closeListeners() error {
 		}
 	}
 	return err
+}
+
+func (srv *Server) isClosed() bool {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	return srv.closed
 }
 
 // h1Listener is used to signal back http.Server's Close and Shutdown to the
