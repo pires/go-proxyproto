@@ -14,8 +14,9 @@ import (
 //
 // A V2 header may be at most 16 bytes + 64KiB large. We enforce a lower limit
 // to mitigate memory allocation DoS while allowing real-world legitimate
-// headers.
-const maxV2HeaderSize = 256
+// headers. PP2_SUBTYPE_SSL_CLIENT_CERT is typically between 1 and 2KiB, so we
+// use a 4KiB limit to leave some room for other TLVs.
+const maxV2HeaderSize = 4096
 
 var (
 	lengthUnspec      = uint16(0)
