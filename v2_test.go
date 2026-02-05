@@ -59,6 +59,9 @@ var (
 	fixtureIPv6V2TLV = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
 	fixtureUnspecTLV = fixtureWithTLV(lengthUnspecBytes, []byte{}, fixtureTLV)
 
+	fixtureMediumTLV   = make([]byte, 2048)
+	fixtureV2MediumTLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureMediumTLV)
+
 	// Arbitrary bytes following proxy bytes.
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
 )
@@ -287,6 +290,18 @@ var validParseAndWriteV2Tests = []struct {
 			TransportProtocol: UnixDatagram,
 			SourceAddr:        unixDatagramAddr,
 			DestinationAddr:   unixDatagramAddr,
+		},
+	},
+	{
+		desc:   "proxy TCPv4 with medium TLV",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureV2MediumTLV...)),
+		expectedHeader: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        v4addr,
+			DestinationAddr:   v4addr,
+			rawTLVs:           fixtureMediumTLV,
 		},
 	},
 }
