@@ -190,7 +190,7 @@ func newTestServer(t *testing.T) (addr string, server *http.Server) {
 
 	t.Cleanup(func() {
 		err := <-done
-		if err != nil && !errors.Is(err, net.ErrClosed) {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("failed to serve: %v", err)
 		}
 	})
@@ -231,7 +231,7 @@ func newTLSTestServer(t *testing.T) (addr string, server *http.Server) {
 
 	t.Cleanup(func() {
 		err := <-done
-		if err != nil && !errors.Is(err, net.ErrClosed) {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("failed to serve: %v", err)
 		}
 	})
