@@ -2458,6 +2458,91 @@ func TestConnReadHandlesChunkedPayload(t *testing.T) {
 	}
 }
 
+func TestReadUsesConnWhenBufReaderNil(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	t.Cleanup(func() {
+		if closeErr := serverConn.Close(); closeErr != nil {
+			t.Errorf("failed to close server connection: %v", closeErr)
+		}
+	})
+	t.Cleanup(func() {
+		if closeErr := clientConn.Close(); closeErr != nil {
+			t.Errorf("failed to close client connection: %v", closeErr)
+		}
+	})
+
+	proxyConn := NewConn(serverConn)
+	sendSecond := make(chan struct{})
+
+	go func() {
+		_, _ = clientConn.Write([]byte("a"))
+		<-sendSecond
+		_, _ = clientConn.Write([]byte("b"))
+		_ = clientConn.Close()
+	}()
+
+	buf := make([]byte, 1)
+	// First read processes header detection and drains the buffer.
+	if _, err := proxyConn.Read(buf); err != nil {
+		t.Fatalf("first read failed: %v", err)
+	}
+	if proxyConn.bufReader != nil {
+		t.Fatalf("expected bufReader to be nil after draining buffer")
+	}
+
+	// With bufReader cleared, Read should use the underlying conn.
+	close(sendSecond)
+	if _, err := proxyConn.Read(buf); err != nil {
+		t.Fatalf("second read failed: %v", err)
+	}
+	if string(buf) != "b" {
+		t.Fatalf("unexpected second read payload: %q", string(buf))
+	}
+}
+
+func TestWriteToUsesConnWhenBufReaderNil(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	t.Cleanup(func() {
+		if closeErr := serverConn.Close(); closeErr != nil {
+			t.Errorf("failed to close server connection: %v", closeErr)
+		}
+	})
+	t.Cleanup(func() {
+		if closeErr := clientConn.Close(); closeErr != nil {
+			t.Errorf("failed to close client connection: %v", closeErr)
+		}
+	})
+
+	proxyConn := NewConn(serverConn)
+	sendPayload := make(chan struct{})
+
+	go func() {
+		_, _ = clientConn.Write([]byte("x"))
+		<-sendPayload
+		_, _ = clientConn.Write([]byte("payload"))
+		_ = clientConn.Close()
+	}()
+
+	// Process header detection and drain the buffer.
+	buf := make([]byte, 1)
+	if _, err := proxyConn.Read(buf); err != nil {
+		t.Fatalf("initial read failed: %v", err)
+	}
+	if proxyConn.bufReader != nil {
+		t.Fatalf("expected bufReader to be nil after draining buffer")
+	}
+
+	// With bufReader cleared, WriteTo should copy directly from conn.
+	close(sendPayload)
+	var out bytes.Buffer
+	if _, err := proxyConn.WriteTo(&out); err != nil {
+		t.Fatalf("WriteTo failed: %v", err)
+	}
+	if out.String() != "payload" {
+		t.Fatalf("unexpected WriteTo output: %q", out.String())
+	}
+}
+
 func benchmarkTCPProxy(size int, b *testing.B) {
 	// create and start the echo backend
 	backend, err := net.Listen("tcp", testLocalhostRandomPort)
