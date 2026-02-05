@@ -223,6 +223,117 @@ func TestUseWithReadHeaderTimeout(t *testing.T) {
 	}
 }
 
+func TestReadHeaderTimeoutRespectsEarlierDeadline(t *testing.T) {
+	const (
+		headerTimeout = 200 * time.Millisecond
+		userTimeout   = 60 * time.Millisecond
+		tolerance     = 100 * time.Millisecond
+	)
+
+	l, err := net.Listen("tcp", testLocalhostRandomPort)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	pl := &Listener{
+		Listener:          l,
+		ReadHeaderTimeout: headerTimeout,
+		Policy: func(_ net.Addr) (Policy, error) {
+			// Use REQUIRE so a timeout is surfaced as ErrNoProxyProtocol.
+			return REQUIRE, nil
+		},
+	}
+
+	type dialResult struct {
+		conn net.Conn
+		err  error
+	}
+
+	dialResultCh := make(chan dialResult, 1)
+	go func() {
+		conn, err := net.Dial("tcp", pl.Addr().String())
+		dialResultCh <- dialResult{conn: conn, err: err}
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Errorf("failed to close connection: %v", closeErr)
+		}
+	})
+
+	result := <-dialResultCh
+	if result.err != nil {
+		t.Fatalf("client error: %v", result.err)
+	}
+	t.Cleanup(func() {
+		if closeErr := result.conn.Close(); closeErr != nil {
+			t.Errorf("failed to close client connection: %v", closeErr)
+		}
+	})
+
+	// Set a shorter user deadline than the readHeaderTimeout and do not send data.
+	if err := conn.SetReadDeadline(time.Now().Add(userTimeout)); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	start := time.Now()
+	recv := make([]byte, 1)
+	_, err = conn.Read(recv)
+	elapsed := time.Since(start)
+
+	// The read should honor the earlier user deadline instead of waiting
+	// for the longer readHeaderTimeout.
+	if !errors.Is(err, ErrNoProxyProtocol) {
+		t.Fatalf("expected ErrNoProxyProtocol, got: %v", err)
+	}
+	if elapsed > userTimeout+tolerance {
+		t.Fatalf("read exceeded user deadline: elapsed=%v timeout=%v", elapsed, userTimeout)
+	}
+}
+
+func TestDeadlineSettersAfterHeaderProcessed(t *testing.T) {
+	conn, peer := net.Pipe()
+	t.Cleanup(func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			t.Errorf("failed to close connection: %v", closeErr)
+		}
+	})
+	t.Cleanup(func() {
+		if closeErr := peer.Close(); closeErr != nil {
+			t.Errorf("failed to close peer connection: %v", closeErr)
+		}
+	})
+
+	proxyConn := NewConn(conn)
+
+	// Ensure header processing completes by sending a non-PROXY byte
+	// and reading it through the proxy connection.
+	go func() {
+		if _, err := peer.Write([]byte("x")); err != nil {
+			t.Errorf("failed to write peer data: %v", err)
+		}
+	}()
+	buf := make([]byte, 1)
+	if _, err := proxyConn.Read(buf); err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	if err := proxyConn.SetDeadline(deadline); err != nil {
+		t.Fatalf("unexpected SetDeadline error: %v", err)
+	}
+	if err := proxyConn.SetReadDeadline(deadline); err != nil {
+		t.Fatalf("unexpected SetReadDeadline error: %v", err)
+	}
+	if err := proxyConn.SetWriteDeadline(deadline); err != nil {
+		t.Fatalf("unexpected SetWriteDeadline error: %v", err)
+	}
+}
+
 func TestReadHeaderTimeoutIsReset(t *testing.T) {
 	const timeout = time.Millisecond * 250
 
