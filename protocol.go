@@ -433,6 +433,11 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 		return 0, err
 	}
 
+	// If the buffer has been drained (or cleared), copy directly from conn.
+	if p.bufReader == nil {
+		return io.Copy(w, p.conn)
+	}
+
 	b := make([]byte, p.bufReader.Buffered())
 	if _, err := p.bufReader.Read(b); err != nil {
 		return 0, err // this should never happen as we read buffered data.
