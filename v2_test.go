@@ -62,6 +62,9 @@ var (
 	fixtureMediumTLV   = make([]byte, 2048)
 	fixtureV2MediumTLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureMediumTLV)
 
+	fixtureTooLargeTLV   = make([]byte, 10*1024)
+	fixtureV2TooLargeTLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureTooLargeTLV)
+
 	// Arbitrary bytes following proxy bytes.
 	arbitraryTailBytes = []byte{'\x99', '\x97', '\x98'}
 )
@@ -149,6 +152,11 @@ var invalidParseV2Tests = []struct {
 	{
 		desc:          "unspec length greater than zero but no TLVs",
 		reader:        newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UNSPEC)), fixtureUnspecTLV[:2]...)),
+		expectedError: ErrInvalidLength,
+	},
+	{
+		desc:          "TCPv4 with too large TLV",
+		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureV2TooLargeTLV...)),
 		expectedError: ErrInvalidLength,
 	},
 }
