@@ -126,12 +126,12 @@ var invalidParseV2Tests = []struct {
 	{
 		desc:          "TCPv4 with mismatching length",
 		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), lengthV4Bytes...)),
-		expectedError: ErrInvalidLength,
+		expectedError: ErrInvalidAddress,
 	},
 	{
 		desc:          "TCPv6 with mismatching length",
 		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), lengthV6Bytes...)),
-		expectedError: ErrInvalidLength,
+		expectedError: ErrInvalidAddress,
 	},
 	{
 		desc:          "TCPv4 length zero but with address and ports",
@@ -141,7 +141,7 @@ var invalidParseV2Tests = []struct {
 	{
 		desc:          "TCPv6 with IPv6 length but IPv4 address and ports",
 		reader:        newBufioReader(append(append(append(SIGV2, byte(PROXY), byte(TCPv6)), lengthV6Bytes...), fixtureIPv4Address...)),
-		expectedError: ErrInvalidLength,
+		expectedError: ErrInvalidAddress,
 	},
 	{
 		desc:          "unspec length greater than zero but no TLVs",

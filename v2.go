@@ -10,6 +10,13 @@ import (
 	"net"
 )
 
+// maxV2HeaderSize is the maximum acceptable size of a V2 header.
+//
+// A V2 header may be at most 16 bytes + 64KiB large. We enforce a lower limit
+// to mitigate memory allocation DoS while allowing real-world legitimate
+// headers.
+const maxV2HeaderSize = 256
+
 var (
 	lengthUnspec      = uint16(0)
 	lengthV4          = uint16(12)
@@ -108,7 +115,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return header, nil
 	}
 
-	if _, err := reader.Peek(int(length)); err != nil {
+	if length > maxV2HeaderSize {
 		return nil, ErrInvalidLength
 	}
 
@@ -159,6 +166,10 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	header.rawTLVs = make([]byte, payloadReader.N) // Allocate minimum size slice
 	if _, err = io.ReadFull(payloadReader, header.rawTLVs); err != nil && err != io.EOF {
 		return nil, err
+	}
+
+	if payloadReader.N != 0 {
+		return nil, ErrInvalidLength
 	}
 
 	return header, nil

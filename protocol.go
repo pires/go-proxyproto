@@ -13,9 +13,11 @@ import (
 
 // readBufferSize is the size used for bufio.Reader's internal buffer.
 //
-// For v1 the header length is at most 108 bytes.
-// For v2 the header length is at most 52 bytes plus the length of the TLVs.
-// We use 256 bytes to be safe.
+// This is kept low to reduce per-connection memory overhead. If the header is
+// larger than readBufferSize, the header will be decoded with multiple Read
+// calls. For v1 the header length is at most 108 bytes. For v2 the header
+// length is at most 52 bytes plus the length of the TLVs. We use 256 bytes to
+// accommodate for the most common cases.
 const readBufferSize = 256
 
 var (
