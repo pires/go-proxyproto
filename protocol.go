@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+// readBufferSize is the size used for bufio.Reader's internal buffer.
+//
+// For v1 the header length is at most 108 bytes.
+// For v2 the header length is at most 52 bytes plus the length of the TLVs.
+// We use 256 bytes to be safe.
+const readBufferSize = 256
+
 var (
 	// DefaultReadHeaderTimeout is how long header processing waits for header to
 	// be read from the wire, if Listener.ReaderHeaderTimeout is not set.
@@ -153,11 +160,7 @@ func (p *Listener) Addr() net.Addr {
 // NewConn is used to wrap a net.Conn that may be speaking
 // the proxy protocol into a proxyproto.Conn.
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
-	// For v1 the header length is at most 108 bytes.
-	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
-	// We use 256 bytes to be safe.
-	const bufSize = 256
-	br := bufio.NewReaderSize(conn, bufSize)
+	br := bufio.NewReaderSize(conn, readBufferSize)
 
 	pConn := &Conn{
 		bufReader: br,

@@ -318,7 +318,7 @@ func TestWriteV2Valid(t *testing.T) {
 			}
 
 			// Read written bytes to validate written header
-			r := bufio.NewReader(&b)
+			r := bufio.NewReaderSize(&b, readBufferSize)
 			newHeader, err := Read(r)
 			if err != nil {
 				t.Fatal("unexpected error ", err)
@@ -511,7 +511,7 @@ func TestV2TLVFormatTooLargeTLV(t *testing.T) {
 }
 
 func newBufioReader(b []byte) *bufio.Reader {
-	return bufio.NewReader(bytes.NewReader(b))
+	return bufio.NewReaderSize(bytes.NewReader(b), readBufferSize)
 }
 
 func fixtureWithTLV(cur []byte, addr []byte, tlv []byte) []byte {
