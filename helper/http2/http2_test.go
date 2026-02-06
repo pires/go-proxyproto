@@ -21,7 +21,7 @@ import (
 )
 
 func ExampleServer() {
-	ln, err := net.Listen("tcp", "localhost:0")
+	ln, err := net.Listen("tcp", "localhost:80")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -36,20 +36,9 @@ func ExampleServer() {
 			_, _ = w.Write([]byte("Hello world!\n"))
 		}),
 	}, nil)
-	// Run the server in a goroutine.
-	go func() {
-		if err := server.Serve(proxyLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("failed to serve: %v", err)
-		}
-	}()
-
-	time.Sleep(1 * time.Second)
-
-	if err := server.Close(); err != nil {
-		log.Fatalf("failed to close server: %v", err)
+	if err := server.Serve(proxyLn); err != nil {
+		log.Fatalf("failed to serve: %v", err)
 	}
-
-	// Output:
 }
 
 type contextKey string
