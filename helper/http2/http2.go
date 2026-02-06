@@ -187,11 +187,6 @@ func (srv *Server) serveConn(baseCtx context.Context, conn net.Conn) error {
 	}
 }
 
-// Close closes the server by closing all listeners.
-func (srv *Server) Close() error {
-	return srv.closeListeners()
-}
-
 func (srv *Server) closeListeners() error {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
