@@ -166,15 +166,13 @@ func (srv *Server) serveConn(baseCtx context.Context, conn net.Conn) error {
 		}()
 
 		ctx := baseCtx
-		// Mirror net/http.Server ConnContext behavior (see server.go around line 3469).
-		connCtx := ctx
+		// Mirror net/http.Server ConnContext behavior.
 		if cc := srv.h1.ConnContext; cc != nil {
-			connCtx = cc(ctx, conn)
-			if connCtx == nil {
+			ctx = cc(ctx, conn)
+			if ctx == nil {
 				panic("ConnContext returned nil")
 			}
 		}
-		ctx = connCtx
 
 		opts := http2.ServeConnOpts{Context: ctx, BaseConfig: srv.h1}
 		srv.h2.ServeConn(conn, &opts)
