@@ -5,6 +5,7 @@ import (
 	"bytes"
 	iorand "crypto/rand"
 	"encoding/binary"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -164,7 +165,7 @@ var invalidParseV2Tests = []struct {
 func TestParseV2Invalid(t *testing.T) {
 	for _, tt := range invalidParseV2Tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			if _, err := Read(tt.reader); err != tt.expectedError {
+			if _, err := Read(tt.reader); !errors.Is(err, tt.expectedError) {
 				t.Fatalf("expected %v, actual %v", tt.expectedError, err)
 			}
 		})

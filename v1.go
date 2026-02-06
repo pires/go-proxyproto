@@ -71,7 +71,7 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	for {
 		b, err := reader.ReadByte()
 		if err != nil {
-			return nil, fmt.Errorf(ErrCantReadVersion1Header.Error()+": %v", err)
+			return nil, fmt.Errorf("%w: %w", ErrCantReadVersion1Header, err)
 		}
 		buf = append(buf, b)
 		if b == '\n' {

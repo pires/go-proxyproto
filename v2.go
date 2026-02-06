@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -73,7 +74,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Skip first 12 bytes (signature)
 	for range 12 {
 		if _, err = reader.ReadByte(); err != nil {
-			return nil, ErrCantReadProtocolVersionAndCommand
+			return nil, fmt.Errorf("%w: %w", ErrCantReadProtocolVersionAndCommand, err)
 		}
 	}
 
@@ -83,7 +84,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Read the 13th byte, protocol version and command
 	b13, err := reader.ReadByte()
 	if err != nil {
-		return nil, ErrCantReadProtocolVersionAndCommand
+		return nil, fmt.Errorf("%w: %w", ErrCantReadProtocolVersionAndCommand, err)
 	}
 	header.Command = ProtocolVersionAndCommand(b13)
 	if _, ok := supportedCommand[header.Command]; !ok {
@@ -93,7 +94,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Read the 14th byte, address family and protocol
 	b14, err := reader.ReadByte()
 	if err != nil {
-		return nil, ErrCantReadAddressFamilyAndProtocol
+		return nil, fmt.Errorf("%w: %w", ErrCantReadAddressFamilyAndProtocol, err)
 	}
 	header.TransportProtocol = AddressFamilyAndProtocol(b14)
 	// UNSPEC is only supported when LOCAL is set.
@@ -104,7 +105,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Make sure there are bytes available as specified in length
 	var length uint16
 	if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
-		return nil, ErrCantReadLength
+		return nil, fmt.Errorf("%w: %w", ErrCantReadLength, err)
 	}
 	if !header.validateLength(length) {
 		return nil, ErrInvalidLength
@@ -130,21 +131,21 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if header.TransportProtocol.IsIPv4() {
 			var addr _addr4
 			if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
-				return nil, ErrInvalidAddress
+				return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 			}
 			header.SourceAddr = newIPAddr(header.TransportProtocol, addr.Src[:], addr.SrcPort)
 			header.DestinationAddr = newIPAddr(header.TransportProtocol, addr.Dst[:], addr.DstPort)
 		} else if header.TransportProtocol.IsIPv6() {
 			var addr _addr6
 			if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
-				return nil, ErrInvalidAddress
+				return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 			}
 			header.SourceAddr = newIPAddr(header.TransportProtocol, addr.Src[:], addr.SrcPort)
 			header.DestinationAddr = newIPAddr(header.TransportProtocol, addr.Dst[:], addr.DstPort)
 		} else if header.TransportProtocol.IsUnix() {
 			var addr _addrUnix
 			if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
-				return nil, ErrInvalidAddress
+				return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 			}
 
 			network := "unix"
