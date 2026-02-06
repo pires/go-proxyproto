@@ -2160,10 +2160,12 @@ func (c *deadlineConn) SetDeadline(t time.Time) error {
 	c.deadline = t
 	return nil
 }
+
 func (c *deadlineConn) SetReadDeadline(t time.Time) error {
 	c.readDeadline = t
 	return nil
 }
+
 func (c *deadlineConn) SetWriteDeadline(t time.Time) error {
 	c.writeDeadline = t
 	return nil
@@ -2184,6 +2186,7 @@ func (c *noReadFromConn) SetDeadline(time.Time) error { return nil }
 func (c *noReadFromConn) SetReadDeadline(time.Time) error {
 	return nil
 }
+
 func (c *noReadFromConn) SetWriteDeadline(time.Time) error {
 	return nil
 }
@@ -2540,6 +2543,87 @@ func TestWriteToUsesConnWhenBufReaderNil(t *testing.T) {
 	}
 	if out.String() != "payload" {
 		t.Fatalf("unexpected WriteTo output: %q", out.String())
+	}
+}
+
+// TestBufReaderSizeMatchesUserBuffer verifies that the internal bufReader
+// is sized according to the user's first Read() buffer, allowing more data
+// to be read from the OS in a single call.
+func TestBufReaderSizeMatchesUserBuffer(t *testing.T) {
+	const payloadSize = 4000
+
+	proxyHeader := []byte("PROXY TCP4 192.168.1.1 192.168.1.2 12345 443\r\n")
+	payload := bytes.Repeat([]byte("X"), payloadSize)
+	fullData := append(proxyHeader, payload...)
+
+	serverConn, clientConn := net.Pipe()
+	defer func() {
+		_ = serverConn.Close()
+		_ = clientConn.Close()
+	}()
+
+	go func() {
+		_, _ = clientConn.Write(fullData)
+		_ = clientConn.Close()
+	}()
+
+	conn := NewConn(serverConn)
+
+	// Use a large buffer for the first Read()
+	buf := make([]byte, 8192)
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+	n, err := conn.Read(buf)
+	if err != nil && err != io.EOF {
+		t.Fatalf("read failed: %v", err)
+	}
+
+	t.Logf("First Read: %d bytes (header=%d, payload=%d)", n, len(proxyHeader), payloadSize)
+
+	if n != payloadSize {
+		t.Errorf("Expected first Read to return the entire payload (%d), got %d", payloadSize, n)
+	}
+}
+
+// TestBufReaderDefaultSizeWhenHeaderReadFirst verifies that if header is processed
+// before Read() (e.g., via ProxyHeader()), the default buffer size is used.
+func TestBufReaderDefaultSizeWhenHeaderReadFirst(t *testing.T) {
+	payloadSize := 400
+	proxyHeader := []byte("PROXY TCP4 192.168.1.1 192.168.1.2 12345 443\r\n")
+	payload := bytes.Repeat([]byte("X"), payloadSize)
+	fullData := append(proxyHeader, payload...)
+
+	serverConn, clientConn := net.Pipe()
+	defer func() {
+		_ = serverConn.Close()
+		_ = clientConn.Close()
+	}()
+
+	go func() {
+		_, _ = clientConn.Write(fullData)
+		_ = clientConn.Close()
+	}()
+
+	conn := NewConn(serverConn)
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
+
+	// Access header before Read() - this triggers header processing with default buffer size
+	header := conn.ProxyHeader()
+	if header == nil {
+		t.Fatal("expected proxy header")
+	}
+
+	if conn.bufReader.Size() != readBufferSize {
+		t.Errorf("conn.bufReader size (%d) doesn't equal the default size (%d)", conn.bufReader.Size(), readBufferSize)
+	}
+
+	// Now Read should still work, but we will only get ( 256 - headerSize ) = 210 bytes
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil && err != io.EOF {
+		t.Fatalf("read failed: %v", err)
+	}
+	if n != readBufferSize-len(proxyHeader) {
+		t.Errorf("expected %d bytes, got %d", readBufferSize-len(proxyHeader), n)
 	}
 }
 

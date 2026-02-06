@@ -58,9 +58,11 @@ type Listener struct {
 type Conn struct {
 	readDeadline      atomic.Value // time.Time
 	once              sync.Once
+	bufReaderOnce     sync.Once
 	readErr           error
 	conn              net.Conn
 	bufReader         *bufio.Reader
+	bufReaderSize     atomic.Int64
 	header            *Header
 	ProxyHeaderPolicy Policy
 	Validate          Validator
@@ -166,11 +168,8 @@ func (p *Listener) Addr() net.Addr {
 // If you need to enforce a specific ReadDeadline on the connection, be sure to call Conn.SetReadDeadline
 // again after NewConn returns, to restore your desired deadline.
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
-	br := bufio.NewReaderSize(conn, readBufferSize)
-
 	pConn := &Conn{
-		bufReader: br,
-		conn:      conn,
+		conn: conn,
 	}
 
 	for _, opt := range opts {
@@ -180,10 +179,26 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	return pConn
 }
 
+// initBufReader initializes the bufReader with the appropriate size.
+// The size is max(readBufferSize, size set by Read()).
+// This is called once via bufReaderOnce.
+func (p *Conn) initBufReader() {
+	p.bufReaderOnce.Do(func() {
+		size := max(readBufferSize, int(p.bufReaderSize.Load()))
+		p.bufReader = bufio.NewReaderSize(p.conn, size)
+	})
+}
+
 // Read is check for the proxy protocol header when doing
 // the initial scan. If there is an error parsing the header,
 // it is returned and the socket is closed.
 func (p *Conn) Read(b []byte) (int, error) {
+	// Set the desired buffer size before initializing bufReader.
+	// This allows the bufReader to be sized according to the user's buffer,
+	// so that more data can be read from the OS in a single call.
+	// Use CompareAndSwap to only set if not already set (first Read wins).
+	p.bufReaderSize.CompareAndSwap(0, int64(len(b)))
+
 	// Ensure header processing runs at most once and surface any errors.
 	if err := p.ensureHeaderProcessed(); err != nil {
 		return 0, err
@@ -405,6 +420,11 @@ func (p *Conn) readHeader() error {
 
 // ensureHeaderProcessed runs header processing once.
 func (p *Conn) ensureHeaderProcessed() error {
+	// Initialize bufReader before processing header.
+	// If Read() was called first, this will use the user's buffer size.
+	// Otherwise, it will use the default readBufferSize.
+	p.initBufReader()
+
 	p.once.Do(func() {
 		p.readErr = p.readHeader()
 	})
