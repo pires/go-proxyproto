@@ -239,34 +239,28 @@ func TestServer_h2_nil_ConnContext(t *testing.T) {
 	}
 }
 
-func newTestServer(t *testing.T) (addr string, server *http.Server) {
+// startTestServer listens on a random port, wraps the listener with wrapListener
+// (or a proxyproto.Listener if nil), and starts an h2proxy.Server in the background.
+// It registers cleanup to wait for the server to finish.
+func startTestServer(t *testing.T, server *http.Server, wrapListener func(net.Listener) net.Listener) string {
+	t.Helper()
+
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
 
-	server = &http.Server{
-		ReadHeaderTimeout: 5 * time.Second,
-		Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			if v := r.Context().Value(connContextKey); v == nil {
-				t.Errorf("http.Request.Context missing connContextKey")
-			}
-			if v := r.Context().Value(baseContextKey); v == nil {
-				t.Errorf("http.Request.Context missing baseContextKey")
-			}
-		}),
-		BaseContext: func(_ net.Listener) context.Context {
-			return context.WithValue(context.Background(), baseContextKey, struct{}{})
-		},
-		ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
-			return context.WithValue(ctx, connContextKey, struct{}{})
-		},
+	var serveLn net.Listener
+	if wrapListener != nil {
+		serveLn = wrapListener(ln)
+	} else {
+		serveLn = &proxyproto.Listener{Listener: ln}
 	}
 
 	h2Server := h2proxy.NewServer(server, nil)
 	done := make(chan error, 1)
 	go func() {
-		done <- h2Server.Serve(&proxyproto.Listener{Listener: ln})
+		done <- h2Server.Serve(serveLn)
 	}()
 
 	t.Cleanup(func() {
@@ -276,75 +270,49 @@ func newTestServer(t *testing.T) (addr string, server *http.Server) {
 		}
 	})
 
-	return ln.Addr().String(), server
+	return ln.Addr().String()
+}
+
+func newTestServer(t *testing.T) (addr string, server *http.Server) {
+	server = newContextAssertingServer(t)
+	return startTestServer(t, server, nil), server
 }
 
 func newTLSTestServer(t *testing.T) (addr string, server *http.Server) {
-	ln, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("failed to listen: %v", err)
-	}
-
-	server = &http.Server{
-		ReadHeaderTimeout: 5 * time.Second,
-		Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			if v := r.Context().Value(connContextKey); v == nil {
-				t.Errorf("http.Request.Context missing connContextKey")
-			}
-			if v := r.Context().Value(baseContextKey); v == nil {
-				t.Errorf("http.Request.Context missing baseContextKey")
-			}
-		}),
-		BaseContext: func(_ net.Listener) context.Context {
-			return context.WithValue(context.Background(), baseContextKey, struct{}{})
-		},
-		ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
-			return context.WithValue(ctx, connContextKey, struct{}{})
-		},
-	}
-
-	tlsLn := tls.NewListener(ln, testTLSConfig(t))
-	h2Server := h2proxy.NewServer(server, nil)
-	done := make(chan error, 1)
-	go func() {
-		done <- h2Server.Serve(tlsLn)
-	}()
-
-	t.Cleanup(func() {
-		err := <-done
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			t.Fatalf("failed to serve: %v", err)
-		}
-	})
-
-	return ln.Addr().String(), server
+	server = newContextAssertingServer(t)
+	return startTestServer(t, server, func(ln net.Listener) net.Listener {
+		return tls.NewListener(ln, testTLSConfig(t))
+	}), server
 }
 
 func newTestServerWithoutConnContext(t *testing.T) (addr string, server *http.Server) {
-	ln, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("failed to listen: %v", err)
-	}
-
 	server = &http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
 		Handler:           http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
 	}
+	return startTestServer(t, server, nil), server
+}
 
-	h2Server := h2proxy.NewServer(server, nil)
-	done := make(chan error, 1)
-	go func() {
-		done <- h2Server.Serve(&proxyproto.Listener{Listener: ln})
-	}()
-
-	t.Cleanup(func() {
-		err := <-done
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			t.Fatalf("failed to serve: %v", err)
-		}
-	})
-
-	return ln.Addr().String(), server
+// newContextAssertingServer returns an http.Server that asserts connContextKey
+// and baseContextKey are present in every request's context.
+func newContextAssertingServer(t *testing.T) *http.Server {
+	return &http.Server{
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			if v := r.Context().Value(connContextKey); v == nil {
+				t.Errorf("http.Request.Context missing connContextKey")
+			}
+			if v := r.Context().Value(baseContextKey); v == nil {
+				t.Errorf("http.Request.Context missing baseContextKey")
+			}
+		}),
+		BaseContext: func(_ net.Listener) context.Context {
+			return context.WithValue(context.Background(), baseContextKey, struct{}{})
+		},
+		ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
+			return context.WithValue(ctx, connContextKey, struct{}{})
+		},
+	}
 }
 
 func testTLSConfig(t *testing.T) *tls.Config {
