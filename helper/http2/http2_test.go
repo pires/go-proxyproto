@@ -21,7 +21,9 @@ import (
 )
 
 func ExampleServer() {
-	ln, err := net.Listen("tcp", "localhost:80")
+	addr := "localhost:8080"
+
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -36,9 +38,26 @@ func ExampleServer() {
 			_, _ = w.Write([]byte("Hello world!\n"))
 		}),
 	}, nil)
-	if err := server.Serve(proxyLn); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+	// Run the server in a goroutine.
+	go func() {
+		if err := server.Serve(proxyLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
+	resp, err := http.Get("http://" + addr)
+	if err != nil {
+		log.Fatalf("failed to perform HTTP request: %v", err)
 	}
+	if err := resp.Body.Close(); err != nil {
+		log.Fatalf("failed to close response body: %v", err)
+	}
+
+	if err := server.Close(); err != nil {
+		log.Fatalf("failed to close server: %v", err)
+	}
+
+	// Output:
 }
 
 type contextKey string
@@ -158,6 +177,76 @@ func TestServer_h2_tls(t *testing.T) {
 	}
 }
 
+func TestServer_h1_nil_ConnContext(t *testing.T) {
+	addr, server := newTestServerWithoutConnContext(t)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("failed to close server: %v", err)
+		}
+	})
+
+	resp, err := http.Get("http://" + addr)
+	if err != nil {
+		t.Fatalf("failed to perform HTTP request: %v", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
+}
+
+func TestServer_h2_nil_ConnContext(t *testing.T) {
+	addr, server := newTestServerWithoutConnContext(t)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("failed to close server: %v", err)
+		}
+	})
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("failed to close connection: %v", err)
+		}
+	}()
+
+	proxyHeader := proxyproto.Header{
+		Version:           2,
+		Command:           proxyproto.LOCAL,
+		TransportProtocol: proxyproto.UNSPEC,
+	}
+	tlvs := []proxyproto.TLV{{
+		Type:  proxyproto.PP2_TYPE_ALPN,
+		Value: []byte("h2"),
+	}}
+	if err := proxyHeader.SetTLVs(tlvs); err != nil {
+		t.Fatalf("failed to set TLVs: %v", err)
+	}
+	if _, err := proxyHeader.WriteTo(conn); err != nil {
+		t.Fatalf("failed to write PROXY header: %v", err)
+	}
+
+	h2Conn, err := new(http2.Transport).NewClientConn(conn)
+	if err != nil {
+		t.Fatalf("failed to create HTTP connection: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+addr, nil)
+	if err != nil {
+		t.Fatalf("failed to create HTTP request: %v", err)
+	}
+
+	resp, err := h2Conn.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("failed to perform HTTP request: %v", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
+	}
+}
+
 func newTestServer(t *testing.T) (addr string, server *http.Server) {
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
@@ -227,6 +316,33 @@ func newTLSTestServer(t *testing.T) (addr string, server *http.Server) {
 	done := make(chan error, 1)
 	go func() {
 		done <- h2Server.Serve(tlsLn)
+	}()
+
+	t.Cleanup(func() {
+		err := <-done
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Fatalf("failed to serve: %v", err)
+		}
+	})
+
+	return ln.Addr().String(), server
+}
+
+func newTestServerWithoutConnContext(t *testing.T) (addr string, server *http.Server) {
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+
+	server = &http.Server{
+		ReadHeaderTimeout: 5 * time.Second,
+		Handler:           http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
+	}
+
+	h2Server := h2proxy.NewServer(server, nil)
+	done := make(chan error, 1)
+	go func() {
+		done <- h2Server.Serve(&proxyproto.Listener{Listener: ln})
 	}()
 
 	t.Cleanup(func() {
