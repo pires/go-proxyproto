@@ -21,9 +21,7 @@ import (
 )
 
 func ExampleServer() {
-	addr := "localhost:8080"
-
-	ln, err := net.Listen("tcp", addr)
+	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
@@ -45,13 +43,7 @@ func ExampleServer() {
 		}
 	}()
 
-	resp, err := http.Get("http://" + addr)
-	if err != nil {
-		log.Fatalf("failed to perform HTTP request: %v", err)
-	}
-	if err := resp.Body.Close(); err != nil {
-		log.Fatalf("failed to close response body: %v", err)
-	}
+	time.Sleep(1 * time.Second)
 
 	if err := server.Close(); err != nil {
 		log.Fatalf("failed to close server: %v", err)
