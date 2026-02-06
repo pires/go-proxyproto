@@ -43,12 +43,19 @@ var (
 // Only one of Policy or ConnPolicy should be provided. If both are provided then
 // a panic would occur during accept.
 type Listener struct {
+	// Listener is the underlying listener.
 	Listener net.Listener
 	// Deprecated: use ConnPolicyFunc instead. This will be removed in future release.
-	Policy            PolicyFunc
-	ConnPolicy        ConnPolicyFunc
-	ValidateHeader    Validator
+	Policy PolicyFunc
+	// ConnPolicy is the policy function for accepted connections.
+	ConnPolicy ConnPolicyFunc
+	// ValidateHeader is the validator function for the proxy header.
+	ValidateHeader Validator
+	// ReadHeaderTimeout is the timeout for reading the proxy header.
 	ReadHeaderTimeout time.Duration
+	// ReadBufferSize is the read buffer size for accepted connections. When > 0,
+	// each accepted connection uses this size for proxy header detection; 0 means default.
+	ReadBufferSize int
 }
 
 // Conn is used to wrap and underlying connection which
@@ -56,11 +63,13 @@ type Listener struct {
 // return the address of the client instead of the proxy address. Each connection
 // will have its own readHeaderTimeout and readDeadline set by the Accept() call.
 type Conn struct {
-	readDeadline      atomic.Value // time.Time
-	once              sync.Once
-	readErr           error
-	conn              net.Conn
-	bufReader         *bufio.Reader
+	readDeadline atomic.Value // time.Time
+	once         sync.Once
+	readErr      error
+	conn         net.Conn
+	bufReader    *bufio.Reader
+	// bufferSize is set when the client overrides via WithBufferSize; nil means use default.
+	bufferSize        *int
 	header            *Header
 	ProxyHeaderPolicy Policy
 	Validate          Validator
@@ -86,6 +95,22 @@ func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
 		if t >= 0 {
 			c.readHeaderTimeout = t
 		}
+	}
+}
+
+// WithBufferSize sets the size of the read buffer used for proxy header detection.
+// Values <= 0 are ignored and the default (256 bytes) is used. Values < 16 are
+// effectively 16 due to bufio's minimum. The default is tuned for typical proxy
+// protocol header lengths.
+func WithBufferSize(length int) func(*Conn) {
+	return func(c *Conn) {
+		if length <= 0 {
+			return
+		}
+		p := new(int)
+		*p = length
+		c.bufferSize = p
+		c.bufReader = bufio.NewReaderSize(c.conn, length)
 	}
 }
 
@@ -130,11 +155,14 @@ func (p *Listener) Accept() (net.Conn, error) {
 			}
 		}
 
-		newConn := NewConn(
-			conn,
+		opts := []func(*Conn){
 			WithPolicy(proxyHeaderPolicy),
 			ValidateHeader(p.ValidateHeader),
-		)
+		}
+		if p.ReadBufferSize > 0 {
+			opts = append(opts, WithBufferSize(p.ReadBufferSize))
+		}
+		newConn := NewConn(conn, opts...)
 
 		// If the ReadHeaderTimeout for the listener is unset, use the default timeout.
 		if p.ReadHeaderTimeout == 0 {

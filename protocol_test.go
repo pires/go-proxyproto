@@ -264,6 +264,116 @@ func TestNewConnSetReadHeaderTimeoutIgnoresNegative(t *testing.T) {
 	}
 }
 
+func TestWithBufferSizePositive(t *testing.T) {
+	conn, peer := net.Pipe()
+	t.Cleanup(func() {
+		_ = conn.Close()
+		_ = peer.Close()
+	})
+
+	proxyConn := NewConn(conn, WithBufferSize(4096))
+	if proxyConn.bufferSize == nil {
+		t.Fatalf("expected bufferSize to be set")
+	}
+	if *proxyConn.bufferSize != 4096 {
+		t.Fatalf("expected bufferSize 4096, got %d", *proxyConn.bufferSize)
+	}
+
+	go func() { _, _ = peer.Write([]byte("x")) }()
+	buf := make([]byte, 1)
+	if _, err := proxyConn.Read(buf); err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if string(buf) != "x" {
+		t.Fatalf("unexpected read: %q", buf)
+	}
+}
+
+func TestWithBufferSizeZeroOrNegative(t *testing.T) {
+	for _, length := range []int{0, -1} {
+		t.Run(fmt.Sprint(length), func(t *testing.T) {
+			conn, peer := net.Pipe()
+			t.Cleanup(func() {
+				_ = conn.Close()
+				_ = peer.Close()
+			})
+
+			proxyConn := NewConn(conn, WithBufferSize(length))
+			if proxyConn.bufferSize != nil {
+				t.Fatalf("expected bufferSize to be nil for length %d", length)
+			}
+
+			go func() { _, _ = peer.Write([]byte("y")) }()
+			buf := make([]byte, 1)
+			if _, err := proxyConn.Read(buf); err != nil {
+				t.Fatalf("read failed: %v", err)
+			}
+			if string(buf) != "y" {
+				t.Fatalf("unexpected read: %q", buf)
+			}
+		})
+	}
+}
+
+func TestListenerReadBufferSizeApplied(t *testing.T) {
+	l, err := net.Listen("tcp", testLocalhostRandomPort)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	pl := &Listener{Listener: l, ReadBufferSize: 4096}
+
+	go func() {
+		c, _ := net.Dial("tcp", pl.Addr().String())
+		if c != nil {
+			_ = c.Close()
+		}
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	proxyConn := conn.(*Conn)
+	if proxyConn.bufferSize == nil {
+		t.Fatalf("expected bufferSize to be set when Listener.ReadBufferSize > 0")
+	}
+	if *proxyConn.bufferSize != 4096 {
+		t.Fatalf("expected bufferSize 4096, got %d", *proxyConn.bufferSize)
+	}
+}
+
+func TestListenerReadBufferSizeZeroUsesDefault(t *testing.T) {
+	l, err := net.Listen("tcp", testLocalhostRandomPort)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	pl := &Listener{Listener: l, ReadBufferSize: 0}
+
+	go func() {
+		c, _ := net.Dial("tcp", pl.Addr().String())
+		if c != nil {
+			_ = c.Close()
+		}
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	proxyConn := conn.(*Conn)
+	if proxyConn.bufferSize != nil {
+		t.Fatalf("expected bufferSize to be nil when Listener.ReadBufferSize is 0")
+	}
+}
+
 func TestReadHeaderTimeoutRespectsEarlierDeadline(t *testing.T) {
 	const (
 		headerTimeout = 200 * time.Millisecond
