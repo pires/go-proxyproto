@@ -166,12 +166,15 @@ func (srv *Server) serveConn(baseCtx context.Context, conn net.Conn) error {
 		}()
 
 		ctx := baseCtx
-		// We don't check if srv.h1.ConnContext is nil so http.Server works the same
-		// with or without this middleware.
-		// For more info, see https://github.com/pires/go-proxyproto/pull/140/changes#r2725568706.
-		if connCtx := srv.h1.ConnContext(ctx, conn); connCtx != nil {
-			ctx = connCtx
+		// Mirror net/http.Server ConnContext behavior (see server.go around line 3469).
+		connCtx := ctx
+		if cc := srv.h1.ConnContext; cc != nil {
+			connCtx = cc(ctx, conn)
+			if connCtx == nil {
+				panic("ConnContext returned nil")
+			}
 		}
+		ctx = connCtx
 
 		opts := http2.ServeConnOpts{Context: ctx, BaseConfig: srv.h1}
 		srv.h2.ServeConn(conn, &opts)
@@ -184,6 +187,11 @@ func (srv *Server) serveConn(baseCtx context.Context, conn net.Conn) error {
 		}
 		return fmt.Errorf("unsupported protocol %q", proto)
 	}
+}
+
+// Close closes the server by closing all listeners.
+func (srv *Server) Close() error {
+	return srv.closeListeners()
 }
 
 func (srv *Server) closeListeners() error {
