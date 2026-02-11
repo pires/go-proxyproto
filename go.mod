@@ -1,6 +1,6 @@
 module github.com/pires/go-proxyproto
 
-go 1.24
+go 1.25
 
 require golang.org/x/net v0.39.0
 

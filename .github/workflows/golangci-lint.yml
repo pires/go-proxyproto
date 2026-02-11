@@ -24,7 +24,7 @@ jobs:
       GOTOOLCHAIN: local
     strategy:
       matrix:
-        go: ['1.24', '1.25']
+        go: ['1.25', '1.26']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
