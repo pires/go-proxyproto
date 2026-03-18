@@ -240,6 +240,10 @@ func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (net.IP
 		if addr.Is6() || addr.Is4In6() {
 			return net.IP(addr.AsSlice()), nil
 		}
+		if addr.Is4() {
+			a16 := addr.As16()
+			return net.IP(a16[:]), nil
+		}
 	}
 
 	return nil, ErrInvalidAddress

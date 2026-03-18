@@ -28,6 +28,10 @@ var (
 
 	fixtureUnknown              = "PROXY UNKNOWN" + crlf
 	fixtureUnknownWithAddresses = "PROXY UNKNOWN " + IPv4AddressesAndInvalidPorts + crlf
+
+	fixtureTCP4Simple         = "PROXY TCP4 1.2.3.4 5.6.7.8 12345 22" + crlf
+	fixtureTCP6IPv6SrcIPv4Dst = "PROXY TCP6 2001:db8::1 192.0.2.1 51512 22" + crlf
+	fixtureTCP6Loopback       = "PROXY TCP6 ::1 ::1 1234 5678" + crlf
 )
 
 var invalidParseV1Tests = []struct {
@@ -73,11 +77,6 @@ var invalidParseV1Tests = []struct {
 	{
 		desc:          "invalid IP address",
 		reader:        newBufioReader([]byte("PROXY TCP4 invalid invalid 65533 65533" + crlf)),
-		expectedError: ErrInvalidAddress,
-	},
-	{
-		desc:          "TCP6 with IPv4 addresses",
-		reader:        newBufioReader([]byte("PROXY TCP6 " + IPv4AddressesAndPorts + crlf)),
 		expectedError: ErrInvalidAddress,
 	},
 	{
@@ -175,6 +174,40 @@ var validParseAndWriteV1Tests = []struct {
 			TransportProtocol: UNSPEC,
 			SourceAddr:        nil,
 			DestinationAddr:   nil,
+		},
+	},
+	{
+		desc:   "TCP4 simple",
+		reader: bufio.NewReader(strings.NewReader(fixtureTCP4Simple)),
+		expectedHeader: &Header{
+			Version:           1,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("1.2.3.4").To4(), Port: 12345},
+			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("5.6.7.8").To4(), Port: 22},
+		},
+	},
+	{
+		desc:   "TCP6 IPv6 src IPv4 dst mixed",
+		reader: bufio.NewReader(strings.NewReader(fixtureTCP6IPv6SrcIPv4Dst)),
+		expectedHeader: &Header{
+			Version:           1,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("2001:db8::1").To16(), Port: 51512},
+			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 22},
+		},
+		skipWrite: true,
+	},
+	{
+		desc:   "TCP6 loopback",
+		reader: bufio.NewReader(strings.NewReader(fixtureTCP6Loopback)),
+		expectedHeader: &Header{
+			Version:           1,
+			Command:           PROXY,
+			TransportProtocol: TCPv6,
+			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("::1").To16(), Port: 1234},
+			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("::1").To16(), Port: 5678},
 		},
 	},
 }
