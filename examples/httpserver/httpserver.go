@@ -23,7 +23,7 @@ func main() {
 			}
 		},
 		Handler: http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			log.Printf("[Handler] remote ip %q", r.RemoteAddr)
+			log.Printf("[Handler] remote ip %q", r.RemoteAddr) //nolint:gosec // G706: RemoteAddr is logged intentionally
 		}),
 	}
 
