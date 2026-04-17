@@ -199,7 +199,7 @@ func (header *Header) WriteTo(w io.Writer) (int64, error) {
 		return 0, err
 	}
 
-	return bytes.NewBuffer(buf).WriteTo(w)
+	return bytes.NewReader(buf).WriteTo(w)
 }
 
 // Format renders a proxy protocol header in a format to write over the wire.
