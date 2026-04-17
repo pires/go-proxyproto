@@ -78,21 +78,25 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 	}
 	switch sourceAddr := sourceAddr.(type) {
 	case *net.TCPAddr:
-		if _, ok := destAddr.(*net.TCPAddr); !ok {
+		destAddr, ok := destAddr.(*net.TCPAddr)
+		if !ok {
 			break
 		}
-		if len(sourceAddr.IP.To4()) == net.IPv4len {
+		switch {
+		case sourceAddr.IP.To4() != nil && destAddr.IP.To4() != nil:
 			h.TransportProtocol = TCPv4
-		} else if len(sourceAddr.IP) == net.IPv6len {
+		case sourceAddr.IP.To16() != nil && destAddr.IP.To16() != nil:
 			h.TransportProtocol = TCPv6
 		}
 	case *net.UDPAddr:
-		if _, ok := destAddr.(*net.UDPAddr); !ok {
+		destAddr, ok := destAddr.(*net.UDPAddr)
+		if !ok {
 			break
 		}
-		if len(sourceAddr.IP.To4()) == net.IPv4len {
+		switch {
+		case sourceAddr.IP.To4() != nil && destAddr.IP.To4() != nil:
 			h.TransportProtocol = UDPv4
-		} else if len(sourceAddr.IP) == net.IPv6len {
+		case sourceAddr.IP.To16() != nil && destAddr.IP.To16() != nil:
 			h.TransportProtocol = UDPv6
 		}
 	case *net.UnixAddr:
