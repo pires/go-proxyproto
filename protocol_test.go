@@ -70,7 +70,7 @@ type clientConfig struct {
 	network     string  // dial network, defaults to "tcp"
 	addr        string  // dial target
 	header      *Header // written before the payload when set
-	payload     []byte  // written after the header, defaults to []byte("ping")
+	payload     []byte  // written after the header; nil defaults to "ping", []byte{} writes nothing
 	expectEcho  []byte  // read back and compared when set
 	closeAfter  bool    // close the connection after writing instead of on cleanup
 	connectOnly bool    // only dial, write nothing
@@ -778,6 +778,7 @@ func TestParse_unixStream(t *testing.T) {
 		addr:       socketPath,
 		header:     header,
 		expectEcho: []byte("pong"),
+		closeAfter: true,
 	})
 
 	conn, err := pl.Accept()
