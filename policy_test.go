@@ -5,6 +5,20 @@ import (
 	"testing"
 )
 
+const (
+	// testWhitelistIP1, testWhitelistIP2 and testWhitelistIP3 are valid sample
+	// IPs reused as the allowed set across whitelist-policy cases.
+	testWhitelistIP1 = "10.0.0.2"
+	testWhitelistIP2 = "10.0.0.3"
+	testWhitelistIP3 = "10.0.0.4"
+	// testWhitelistCIDR is a valid CIDR reused across whitelist-policy cases.
+	testWhitelistCIDR = "10.0.0.0/30"
+	// testMalformedCIDR and testMalformedIP are intentionally invalid inputs
+	// reused across policy error-path cases.
+	testMalformedCIDR = "20/80"
+	testMalformedIP   = "855.222.233.11"
+)
+
 type failingAddr struct{}
 
 func (f failingAddr) Network() string { return "failing" }
@@ -20,8 +34,8 @@ func TestWhitelistPolicyReturnsErrorOnInvalidAddress(t *testing.T) {
 		name   string
 		policy PolicyFunc
 	}{
-		{"strict whitelist policy", MustStrictWhiteListPolicy([]string{"10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.0/30"})},
-		{"lax whitelist policy", MustLaxWhiteListPolicy([]string{"10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.0/30"})},
+		{"strict whitelist policy", MustStrictWhiteListPolicy([]string{testWhitelistIP1, testWhitelistIP2, testWhitelistIP3, testWhitelistCIDR})}, //nolint:goconst // test-case label, clearer inline
+		{"lax whitelist policy", MustLaxWhiteListPolicy([]string{testWhitelistIP1, testWhitelistIP2, testWhitelistIP3, testWhitelistCIDR})},       //nolint:goconst // test-case label, clearer inline
 	}
 
 	for _, tc := range cases {
@@ -39,8 +53,8 @@ func TestWhitelistPolicyReturnsErrorOnInvalidIP(t *testing.T) {
 		name   string
 		policy ConnPolicyFunc
 	}{
-		{"conn strict whitelist policy", ConnMustStrictWhiteListPolicy([]string{"10.0.0.3"})},
-		{"conn lax whitelist policy", ConnMustLaxWhiteListPolicy([]string{"10.0.0.3"})},
+		{"conn strict whitelist policy", ConnMustStrictWhiteListPolicy([]string{testWhitelistIP2})},
+		{"conn lax whitelist policy", ConnMustLaxWhiteListPolicy([]string{testWhitelistIP2})},
 	}
 
 	for _, tc := range policies {
@@ -58,7 +72,7 @@ func TestStrictWhitelistPolicyReturnsRejectWhenUpstreamIpAddrNotInWhitelist(t *t
 		name   string
 		policy PolicyFunc
 	}{
-		{"strict whitelist policy", MustStrictWhiteListPolicy([]string{"10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.0/30"})},
+		{"strict whitelist policy", MustStrictWhiteListPolicy([]string{testWhitelistIP1, testWhitelistIP2, testWhitelistIP3, testWhitelistCIDR})},
 	}
 
 	upstream, err := net.ResolveTCPAddr("tcp", "10.0.0.5:45738")
@@ -85,7 +99,7 @@ func TestLaxWhitelistPolicyReturnsIgnoreWhenUpstreamIpAddrNotInWhitelist(t *test
 		name   string
 		policy PolicyFunc
 	}{
-		{"lax whitelist policy", MustLaxWhiteListPolicy([]string{"10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.0/30"})},
+		{"lax whitelist policy", MustLaxWhiteListPolicy([]string{testWhitelistIP1, testWhitelistIP2, testWhitelistIP3, testWhitelistCIDR})},
 	}
 
 	upstream, err := net.ResolveTCPAddr("tcp", "10.0.0.5:45738")
@@ -112,8 +126,8 @@ func TestWhitelistPolicyReturnsUseWhenUpstreamIpAddrInWhitelist(t *testing.T) {
 		name   string
 		policy PolicyFunc
 	}{
-		{"strict whitelist policy", MustStrictWhiteListPolicy([]string{"10.0.0.2", "10.0.0.3", "10.0.0.4"})},
-		{"lax whitelist policy", MustLaxWhiteListPolicy([]string{"10.0.0.2", "10.0.0.3", "10.0.0.4"})},
+		{"strict whitelist policy", MustStrictWhiteListPolicy([]string{testWhitelistIP1, testWhitelistIP2, testWhitelistIP3})},
+		{"lax whitelist policy", MustLaxWhiteListPolicy([]string{testWhitelistIP1, testWhitelistIP2, testWhitelistIP3})},
 	}
 
 	upstream, err := net.ResolveTCPAddr("tcp", "10.0.0.3:45738")
@@ -169,11 +183,11 @@ func Test_CreateWhitelistPolicyWithInvalidCidrReturnsError(t *testing.T) {
 		fn   func() error
 	}{
 		{"strict whitelist policy", func() error {
-			_, err := StrictWhiteListPolicy([]string{"20/80"})
+			_, err := StrictWhiteListPolicy([]string{testMalformedCIDR})
 			return err
 		}},
 		{"lax whitelist policy", func() error {
-			_, err := LaxWhiteListPolicy([]string{"20/80"})
+			_, err := LaxWhiteListPolicy([]string{testMalformedCIDR})
 			return err
 		}},
 	}
@@ -193,11 +207,11 @@ func Test_CreateWhitelistPolicyWithInvalidIpAddressReturnsError(t *testing.T) {
 		fn   func() error
 	}{
 		{"strict whitelist policy", func() error {
-			_, err := StrictWhiteListPolicy([]string{"855.222.233.11"})
+			_, err := StrictWhiteListPolicy([]string{testMalformedIP})
 			return err
 		}},
 		{"lax whitelist policy", func() error {
-			_, err := LaxWhiteListPolicy([]string{"855.222.233.11"})
+			_, err := LaxWhiteListPolicy([]string{testMalformedIP})
 			return err
 		}},
 	}
@@ -218,7 +232,7 @@ func Test_MustLaxWhiteListPolicyPanicsWithInvalidIpAddress(t *testing.T) {
 		}
 	}()
 
-	MustLaxWhiteListPolicy([]string{"855.222.233.11"})
+	MustLaxWhiteListPolicy([]string{testMalformedIP})
 }
 
 func Test_MustLaxWhiteListPolicyPanicsWithInvalidIpRange(t *testing.T) {
@@ -228,7 +242,7 @@ func Test_MustLaxWhiteListPolicyPanicsWithInvalidIpRange(t *testing.T) {
 		}
 	}()
 
-	MustLaxWhiteListPolicy([]string{"20/80"})
+	MustLaxWhiteListPolicy([]string{testMalformedCIDR})
 }
 
 func Test_MustStrictWhiteListPolicyPanicsWithInvalidIpAddress(t *testing.T) {
@@ -238,7 +252,7 @@ func Test_MustStrictWhiteListPolicyPanicsWithInvalidIpAddress(t *testing.T) {
 		}
 	}()
 
-	MustStrictWhiteListPolicy([]string{"855.222.233.11"})
+	MustStrictWhiteListPolicy([]string{testMalformedIP})
 }
 
 func Test_MustStrictWhiteListPolicyPanicsWithInvalidIpRange(t *testing.T) {
@@ -248,16 +262,16 @@ func Test_MustStrictWhiteListPolicyPanicsWithInvalidIpRange(t *testing.T) {
 		}
 	}()
 
-	MustStrictWhiteListPolicy([]string{"20/80"})
+	MustStrictWhiteListPolicy([]string{testMalformedCIDR})
 }
 
 func TestWhiteListPolicyFuncsReturnPolicies(t *testing.T) {
-	strictPolicy, err := StrictWhiteListPolicy([]string{"10.0.0.3"})
+	strictPolicy, err := StrictWhiteListPolicy([]string{testWhitelistIP2})
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 
-	laxPolicy, err := LaxWhiteListPolicy([]string{"10.0.0.3"})
+	laxPolicy, err := LaxWhiteListPolicy([]string{testWhitelistIP2})
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -350,8 +364,8 @@ func TestConnWhitelistPolicies(t *testing.T) {
 		expectedUse    Policy
 		expectedReject Policy
 	}{
-		{"conn strict whitelist policy", ConnMustStrictWhiteListPolicy([]string{"10.0.0.3"}), USE, REJECT},
-		{"conn lax whitelist policy", ConnMustLaxWhiteListPolicy([]string{"10.0.0.3"}), USE, IGNORE},
+		{"conn strict whitelist policy", ConnMustStrictWhiteListPolicy([]string{testWhitelistIP2}), USE, REJECT},
+		{"conn lax whitelist policy", ConnMustLaxWhiteListPolicy([]string{testWhitelistIP2}), USE, IGNORE},
 	}
 
 	allowed, err := net.ResolveTCPAddr("tcp", "10.0.0.3:45738")

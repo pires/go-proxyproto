@@ -35,7 +35,7 @@ var (
 		return a
 	}()
 
-	unixBytes = pad([]byte("socket"), 108)
+	unixBytes = pad([]byte(testUnixSocketName), 108)
 
 	// Tests don't care if source and destination addresses and ports are the same.
 	addressesIPv4 = append(v4ip.To4(), v4ip.To4()...)
@@ -200,7 +200,7 @@ var validParseAndWriteV2Tests = []struct {
 		},
 	},
 	{
-		desc:   "proxy TCPv4",
+		desc:   "proxy TCPv4", //nolint:goconst // test-case label, clearer inline
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureIPv4V2...)),
 		expectedHeader: &Header{
 			Version:           2,
@@ -211,7 +211,7 @@ var validParseAndWriteV2Tests = []struct {
 		},
 	},
 	{
-		desc:   "proxy TCPv6",
+		desc:   "proxy TCPv6", //nolint:goconst // test-case label, clearer inline
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv6)), fixtureIPv6V2...)),
 		expectedHeader: &Header{
 			Version:           2,
@@ -258,7 +258,7 @@ var validParseAndWriteV2Tests = []struct {
 		},
 	},
 	{
-		desc:   "proxy UDPv4",
+		desc:   "proxy UDPv4", //nolint:goconst // test-case label, clearer inline
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv4)), fixtureIPv4V2...)),
 		expectedHeader: &Header{
 			Version:           2,
@@ -269,7 +269,7 @@ var validParseAndWriteV2Tests = []struct {
 		},
 	},
 	{
-		desc:   "proxy UDPv6",
+		desc:   "proxy UDPv6", //nolint:goconst // test-case label, clearer inline
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2...)),
 		expectedHeader: &Header{
 			Version:           2,
@@ -608,7 +608,7 @@ func Test_parseUnixName(t *testing.T) {
 func Test_formatUnixName(t *testing.T) {
 	maxLen := int(lengthUnix) / 2
 	longName := strings.Repeat("a", maxLen+5)
-	shortName := "socket"
+	shortName := testUnixSocketName
 
 	longFormatted := formatUnixName(longName)
 	if len(longFormatted) != maxLen {

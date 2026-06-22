@@ -13,6 +13,12 @@ import (
 const (
 	crlf      = "\r\n"
 	separator = " "
+
+	// v1ProtoTCP4 and v1ProtoTCP6 are the PROXY protocol v1 transport-protocol
+	// tokens for TCP over IPv4 and IPv6 respectively (net has no constants for
+	// these textual identifiers).
+	v1ProtoTCP4 = "TCP4"
+	v1ProtoTCP6 = "TCP6"
 )
 
 func initVersion1() *Header {
@@ -106,9 +112,9 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	// Read address family and protocol
 	var transportProtocol AddressFamilyAndProtocol
 	switch tokens[1] {
-	case "TCP4":
+	case v1ProtoTCP4:
 		transportProtocol = TCPv4
-	case "TCP6":
+	case v1ProtoTCP6:
 		transportProtocol = TCPv6
 	case "UNKNOWN":
 		transportProtocol = UNSPEC // doesn't exist in v1 but fits UNKNOWN
@@ -170,9 +176,9 @@ func (header *Header) formatVersion1() ([]byte, error) {
 	var proto string
 	switch header.TransportProtocol {
 	case TCPv4:
-		proto = "TCP4"
+		proto = v1ProtoTCP4
 	case TCPv6:
-		proto = "TCP6"
+		proto = v1ProtoTCP6
 	default:
 		// Unknown connection (short form)
 		return []byte("PROXY UNKNOWN" + crlf), nil

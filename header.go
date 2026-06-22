@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+// Network names for Unix-domain addresses, matching net.UnixAddr.Net values.
+// The net package exposes no constants for these.
+const (
+	networkUnix     = "unix"
+	networkUnixgram = "unixgram"
+)
+
 var (
 	// SIGV1 is the signature for PROXY protocol v1.
 	SIGV1 = []byte{'\x50', '\x52', '\x4F', '\x58', '\x59'}
@@ -100,9 +107,9 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 			break
 		}
 		switch sourceAddr.Net {
-		case "unix":
+		case networkUnix:
 			h.TransportProtocol = UnixStream
-		case "unixgram":
+		case networkUnixgram:
 			h.TransportProtocol = UnixDatagram
 		}
 	}
