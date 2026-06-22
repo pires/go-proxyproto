@@ -759,7 +759,7 @@ func TestParse_ipv4(t *testing.T) {
 func TestParse_unixStream(t *testing.T) {
 	socketDir := t.TempDir()
 	socketPath := filepath.Join(socketDir, "proxy.sock")
-	l, err := net.Listen("unix", socketPath)
+	l, err := net.Listen(networkUnix, socketPath)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -772,17 +772,17 @@ func TestParse_unixStream(t *testing.T) {
 		Command:           PROXY,
 		TransportProtocol: UnixStream,
 		SourceAddr: &net.UnixAddr{
-			Net:  "unix",
+			Net:  networkUnix,
 			Name: "source.sock",
 		},
 		DestinationAddr: &net.UnixAddr{
-			Net:  "unix",
+			Net:  networkUnix,
 			Name: "dest.sock",
 		},
 	}
 
 	cliResult := runClient(t, clientConfig{
-		network:    "unix",
+		network:    networkUnix,
 		addr:       socketPath,
 		header:     header,
 		expectEcho: []byte("pong"),
@@ -830,11 +830,11 @@ func TestParse_unixDatagram(t *testing.T) {
 		Command:           PROXY,
 		TransportProtocol: UnixDatagram,
 		SourceAddr: &net.UnixAddr{
-			Net:  "unixgram",
+			Net:  networkUnixgram,
 			Name: "source.sock",
 		},
 		DestinationAddr: &net.UnixAddr{
-			Net:  "unixgram",
+			Net:  networkUnixgram,
 			Name: "dest.sock",
 		},
 	}

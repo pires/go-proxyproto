@@ -20,6 +20,11 @@ const (
 	testIP6LongAddr         = "1234:5678:9abc:def0:cafe:babe:dead:2bad"
 	testValidPort           = 65533
 	testInvalidPort         = 99999
+
+	// Unix-domain address names reused across address fixtures in tests.
+	testUnixSocketName = "socket"
+	testUnixSrcName    = "src"
+	testUnixDstName    = "dst"
 )
 
 var (
@@ -32,8 +37,8 @@ var (
 	v4UDPAddr net.Addr = &net.UDPAddr{IP: v4ip, Port: testValidPort}
 	v6UDPAddr net.Addr = &net.UDPAddr{IP: v6ip, Port: testValidPort}
 
-	unixStreamAddr   net.Addr = &net.UnixAddr{Net: "unix", Name: "socket"}
-	unixDatagramAddr net.Addr = &net.UnixAddr{Net: "unixgram", Name: "socket"}
+	unixStreamAddr   net.Addr = &net.UnixAddr{Net: networkUnix, Name: testUnixSocketName}
+	unixDatagramAddr net.Addr = &net.UnixAddr{Net: networkUnixgram, Name: testUnixSocketName}
 
 	errReadIntentionallyBroken = errors.New("read is intentionally broken")
 )
@@ -241,21 +246,21 @@ func TestGetters(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: UnixStream,
 				SourceAddr: &net.UnixAddr{
-					Net:  "unix",
-					Name: "src",
+					Net:  networkUnix,
+					Name: testUnixSrcName,
 				},
 				DestinationAddr: &net.UnixAddr{
-					Net:  "unix",
-					Name: "dst",
+					Net:  networkUnix,
+					Name: testUnixDstName,
 				},
 			},
 			unixSourceAddr: &net.UnixAddr{
-				Net:  "unix",
-				Name: "src",
+				Net:  networkUnix,
+				Name: testUnixSrcName,
 			},
 			unixDestAddr: &net.UnixAddr{
-				Net:  "unix",
-				Name: "dst",
+				Net:  networkUnix,
+				Name: testUnixDstName,
 			},
 		},
 		{
@@ -265,21 +270,21 @@ func TestGetters(t *testing.T) {
 				Command:           PROXY,
 				TransportProtocol: UnixDatagram,
 				SourceAddr: &net.UnixAddr{
-					Net:  "unix",
-					Name: "src",
+					Net:  networkUnix,
+					Name: testUnixSrcName,
 				},
 				DestinationAddr: &net.UnixAddr{
-					Net:  "unix",
-					Name: "dst",
+					Net:  networkUnix,
+					Name: testUnixDstName,
 				},
 			},
 			unixSourceAddr: &net.UnixAddr{
-				Net:  "unix",
-				Name: "src",
+				Net:  networkUnix,
+				Name: testUnixSrcName,
 			},
 			unixDestAddr: &net.UnixAddr{
-				Net:  "unix",
-				Name: "dst",
+				Net:  networkUnix,
+				Name: testUnixDstName,
 			},
 		},
 		{
@@ -648,48 +653,48 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 		{
 			name: "UnixStream",
 			sourceAddr: &net.UnixAddr{
-				Net:  "unix",
-				Name: "src",
+				Net:  networkUnix,
+				Name: testUnixSrcName,
 			},
 			destAddr: &net.UnixAddr{
-				Net:  "unix",
-				Name: "dst",
+				Net:  networkUnix,
+				Name: testUnixDstName,
 			},
 			expected: &Header{
 				Version:           2,
 				Command:           PROXY,
 				TransportProtocol: UnixStream,
 				SourceAddr: &net.UnixAddr{
-					Net:  "unix",
-					Name: "src",
+					Net:  networkUnix,
+					Name: testUnixSrcName,
 				},
 				DestinationAddr: &net.UnixAddr{
-					Net:  "unix",
-					Name: "dst",
+					Net:  networkUnix,
+					Name: testUnixDstName,
 				},
 			},
 		},
 		{
 			name: "UnixDatagram",
 			sourceAddr: &net.UnixAddr{
-				Net:  "unixgram",
-				Name: "src",
+				Net:  networkUnixgram,
+				Name: testUnixSrcName,
 			},
 			destAddr: &net.UnixAddr{
-				Net:  "unixgram",
-				Name: "dst",
+				Net:  networkUnixgram,
+				Name: testUnixDstName,
 			},
 			expected: &Header{
 				Version:           2,
 				Command:           PROXY,
 				TransportProtocol: UnixDatagram,
 				SourceAddr: &net.UnixAddr{
-					Net:  "unixgram",
-					Name: "src",
+					Net:  networkUnixgram,
+					Name: testUnixSrcName,
 				},
 				DestinationAddr: &net.UnixAddr{
-					Net:  "unixgram",
-					Name: "dst",
+					Net:  networkUnixgram,
+					Name: testUnixDstName,
 				},
 			},
 		},
@@ -769,7 +774,7 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 		{
 			name: "UnixAddrTypeMismatch",
 			sourceAddr: &net.UnixAddr{
-				Net: "unix",
+				Net: networkUnix,
 			},
 			destAddr: &net.TCPAddr{
 				IP:   net.ParseIP(testDestinationIPv4Addr),
