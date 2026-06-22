@@ -70,7 +70,8 @@ type clientConfig struct {
 	network     string  // dial network, defaults to "tcp"
 	addr        string  // dial target
 	header      *Header // written before the payload when set
-	payload     []byte  // written after the header; nil defaults to "ping", []byte{} writes nothing
+	payload     []byte  // written after the header; defaults to "ping" when nil, unless headerOnly is set
+	headerOnly  bool    // write only the header (if any) and no payload
 	expectEcho  []byte  // read back and compared when set
 	closeAfter  bool    // close the connection after writing instead of on cleanup
 	connectOnly bool    // only dial, write nothing
@@ -80,22 +81,29 @@ type clientConfig struct {
 // is closed on success or receives the first error.
 func runClient(t *testing.T, cfg clientConfig) <-chan error {
 	t.Helper()
+	if cfg.connectOnly && cfg.closeAfter {
+		t.Fatalf("runClient: connectOnly and closeAfter are mutually exclusive")
+	}
 	network := cfg.network
 	if network == "" {
 		network = "tcp"
 	}
 	payload := cfg.payload
-	if payload == nil {
+	if payload == nil && !cfg.headerOnly {
 		payload = []byte("ping")
 	}
 
-	cliResult := make(chan error)
+	// Buffered so the goroutine never blocks reporting an error if the test
+	// has already failed and stopped reading the channel.
+	cliResult := make(chan error, 1)
 	go func() {
 		conn, err := net.Dial(network, cfg.addr)
 		if err != nil {
 			cliResult <- err
 			return
 		}
+		// connectOnly never reaches the closeAfter branch below, so it always
+		// relies on cleanup; the guard above keeps the two options exclusive.
 		if !cfg.closeAfter {
 			closeOnCleanup(t, "connection", conn)
 		}
@@ -1027,9 +1035,9 @@ func TestReadingIsRefusedWhenProxyHeaderPresentButNotAllowed(t *testing.T) {
 	pl := &Listener{Listener: l, Policy: policyFunc}
 
 	cliResult := runClient(t, clientConfig{
-		addr:    pl.Addr().String(),
-		header:  testTCPv4Header(),
-		payload: []byte{},
+		addr:       pl.Addr().String(),
+		header:     testTCPv4Header(),
+		headerOnly: true,
 	})
 
 	conn, err := pl.Accept()
@@ -1306,9 +1314,9 @@ func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
 	pl := &Listener{Listener: l, ValidateHeader: func(*Header) error { return validationError }}
 
 	cliResult := runClient(t, clientConfig{
-		addr:    pl.Addr().String(),
-		header:  testTCPv4Header(),
-		payload: []byte{},
+		addr:       pl.Addr().String(),
+		header:     testTCPv4Header(),
+		headerOnly: true,
 	})
 
 	conn, err := pl.Accept()
