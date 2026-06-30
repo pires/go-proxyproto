@@ -810,6 +810,21 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 			},
 			expected: unspec,
 		},
+		{
+			// Stream source paired with a datagram destination is not a coherent
+			// connection, so the header stays UNSPEC instead of adopting the
+			// source's flavor.
+			name: "UnixNetMismatch",
+			sourceAddr: &net.UnixAddr{
+				Net:  networkUnix,
+				Name: testUnixSrcName,
+			},
+			destAddr: &net.UnixAddr{
+				Net:  networkUnixgram,
+				Name: testUnixDstName,
+			},
+			expected: unspec,
+		},
 	}
 
 	for _, tt := range tests {
