@@ -61,7 +61,8 @@ func chkErr(err error) {
 }
 
 func main() {
-	// Dial some proxy listener e.g. https://github.com/mailgun/proxyproto
+	// Dial a listener that understands the PROXY protocol, e.g. the server in
+	// examples/server.
 	target, err := net.ResolveTCPAddr("tcp", "127.0.0.1:9876")
 	chkErr(err)
 
