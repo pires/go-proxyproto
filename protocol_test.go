@@ -1471,10 +1471,15 @@ func NewTestTLSServer(l net.Listener) *TestTLSServer {
 	return s
 }
 
-func Test_TLSServer(t *testing.T) {
+// Test_TLSServerHeaderInsideTLS covers ordering B: the upstream completes the
+// TLS handshake first and only then writes the PROXY header inside the encrypted
+// session. TLS must therefore be decrypted before the header can be read, so
+// proxyproto wraps the TLS listener (tls INNER, proxyproto OUTER).
+func Test_TLSServerHeaderInsideTLS(t *testing.T) {
 	l := newLocalListener(t)
 
 	s := NewTestTLSServer(l)
+	// tls INNER (set by NewTestTLSServer), proxyproto OUTER.
 	s.Listener = &Listener{
 		Listener: s.Listener,
 		Policy: func(_ net.Addr) (Policy, error) {
@@ -1523,6 +1528,92 @@ func Test_TLSServer(t *testing.T) {
 	}
 	if string(recv[:n]) != "test" {
 		t.Fatalf("expected \"test\", got \"%s\" %v", recv[:n], recv[:n])
+	}
+
+	// The header was parsed (from the decrypted stream), so RemoteAddr reports
+	// the real client carried by the PROXY header, not the immediate TLS peer.
+	if want := net.JoinHostPort(testSourceIPv4Addr, "1000"); conn.RemoteAddr().String() != want {
+		t.Fatalf("expected remote addr %q, got %q", want, conn.RemoteAddr())
+	}
+	expectClientOK(t, cliResult)
+}
+
+// Test_TLSServerHeaderBeforeTLS covers ordering A: the upstream sends the PROXY
+// header in cleartext before the TLS handshake. proxyproto must read the header
+// first, so it wraps the raw listener and TLS wraps proxyproto (proxyproto
+// INNER, tls OUTER). This is the common deployment (e.g. AWS NLB proxy protocol
+// v2, or HAProxy "send-proxy" in front of a TLS backend).
+func Test_TLSServerHeaderBeforeTLS(t *testing.T) {
+	l := newLocalListener(t)
+
+	// Reuse the shared cert/config machinery, but invert the nesting so TLS is
+	// the outer layer and proxyproto reads the cleartext header first.
+	s := NewTestTLSServer(l)
+	s.Listener = tls.NewListener(
+		&Listener{
+			Listener: l,
+			Policy:   func(_ net.Addr) (Policy, error) { return REQUIRE, nil },
+		},
+		s.TLS,
+	)
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("failed to close TLS server: %v", err)
+		}
+	}()
+
+	host, _, err := net.SplitHostPort(s.Addr())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	clientTLS := s.TLSClientConfig.Clone()
+	clientTLS.ServerName = host
+
+	cliResult := make(chan error)
+	go func() {
+		raw, err := net.Dial("tcp", s.Addr())
+		if err != nil {
+			cliResult <- err
+			return
+		}
+		closeOnCleanup(t, "connection", raw)
+
+		// Write the PROXY header in cleartext, THEN start the TLS handshake.
+		if _, err := testTCPv4Header().WriteTo(raw); err != nil {
+			cliResult <- err
+			return
+		}
+
+		conn := tls.Client(raw, clientTLS)
+		if err := conn.Handshake(); err != nil {
+			cliResult <- err
+			return
+		}
+		if _, err := conn.Write([]byte("test")); err != nil {
+			cliResult <- err
+			return
+		}
+		close(cliResult)
+	}()
+
+	conn, err := s.Listener.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	closeOnCleanup(t, "connection", conn)
+
+	recv := make([]byte, 1024)
+	n, err := conn.Read(recv)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if string(recv[:n]) != "test" {
+		t.Fatalf("expected \"test\", got %q", recv[:n])
+	}
+
+	// The header was parsed from cleartext, so RemoteAddr reports the real client.
+	if want := net.JoinHostPort(testSourceIPv4Addr, "1000"); conn.RemoteAddr().String() != want {
+		t.Fatalf("expected remote addr %q, got %q", want, conn.RemoteAddr())
 	}
 	expectClientOK(t, cliResult)
 }
