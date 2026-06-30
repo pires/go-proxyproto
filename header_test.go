@@ -432,7 +432,8 @@ func TestWriteTo(t *testing.T) {
 	}
 
 	if _, err := invalidHeader.WriteTo(&buf); err == nil {
-		t.Fatalf("should have thrown error %q", err.Error())
+		// err is nil in this branch, so don't format it (would nil-deref).
+		t.Fatal("should have thrown error")
 	}
 }
 
