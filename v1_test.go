@@ -120,7 +120,12 @@ var validParseAndWriteV1Tests = []struct {
 	desc           string
 	reader         *bufio.Reader
 	expectedHeader *Header
-	skipWrite      bool
+	// expectedWrite is the exact wire output formatVersion1 must produce for
+	// expectedHeader. It is asserted byte-for-byte by TestWriteV1Valid, which a
+	// round-trip + EqualsTo check cannot do: EqualsTo compares net.IP.String(),
+	// so a v4-mapped IPv6 ("::ffff:1.2.3.4") and its collapsed v4 form ("1.2.3.4")
+	// look equal there, hiding serialization regressions.
+	expectedWrite string
 }{
 	{
 		desc:   "TCP4",
@@ -132,6 +137,7 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        v4addr,
 			DestinationAddr:   v4addr,
 		},
+		expectedWrite: "PROXY TCP4 127.0.0.1 127.0.0.1 65533 65533" + crlf,
 	},
 	{
 		desc:   "TCP6",
@@ -143,6 +149,7 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        v6addr,
 			DestinationAddr:   v6addr,
 		},
+		expectedWrite: "PROXY TCP6 ::1 ::1 65533 65533" + crlf,
 	},
 	{
 		desc:   "TCP4IN6",
@@ -154,10 +161,10 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        v4addr,
 			DestinationAddr:   v4addr,
 		},
-		// we skip write test because net.ParseIP converts ::ffff:127.0.0.1 to v4
-		// instead of preserving the v4 in v6 form, so, after serializing the header,
-		// we end up with v6 protocol and a v4 IP which is invalid
-		skipWrite: true,
+		// Regression lock for the netip.Addr fix: a v4 IP carried in a TCP6 header
+		// must serialize as ::ffff:127.0.0.1, not the collapsed 127.0.0.1 that
+		// net.IP.String() used to emit (which produced an invalid v4-in-TCP6 line).
+		expectedWrite: "PROXY TCP6 ::ffff:127.0.0.1 ::ffff:127.0.0.1 65533 65533" + crlf,
 	},
 	{
 		desc:   "unknown",
@@ -169,6 +176,7 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        nil,
 			DestinationAddr:   nil,
 		},
+		expectedWrite: "PROXY UNKNOWN" + crlf,
 	},
 	{
 		desc:   "unknown with addresses and ports",
@@ -180,6 +188,8 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        nil,
 			DestinationAddr:   nil,
 		},
+		// UNSPEC always serializes to the short form; addresses are dropped.
+		expectedWrite: "PROXY UNKNOWN" + crlf,
 	},
 	{
 		desc:   "TCP6 IPv4 src IPv4 dst",
@@ -191,7 +201,8 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 1234},
 			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("192.0.2.2").To16(), Port: 5678},
 		},
-		skipWrite: true,
+		// Both addresses are v4-mapped, so both must serialize in ::ffff: form.
+		expectedWrite: "PROXY TCP6 ::ffff:192.0.2.1 ::ffff:192.0.2.2 1234 5678" + crlf,
 	},
 	{
 		desc:   "TCP6 IPv6 src IPv4 dst",
@@ -203,7 +214,8 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("2001:db8::1").To16(), Port: 51512},
 			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 22},
 		},
-		skipWrite: true,
+		// Mixed family: genuine IPv6 source stays as-is, v4 dest becomes v4-mapped.
+		expectedWrite: "PROXY TCP6 2001:db8::1 ::ffff:192.0.2.1 51512 22" + crlf,
 	},
 	{
 		desc:   "TCP6 IPv4 src IPv6 dst",
@@ -215,7 +227,8 @@ var validParseAndWriteV1Tests = []struct {
 			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 51512},
 			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("2001:db8::1").To16(), Port: 22},
 		},
-		skipWrite: true,
+		// Mixed family: v4 source becomes v4-mapped, genuine IPv6 dest stays as-is.
+		expectedWrite: "PROXY TCP6 ::ffff:192.0.2.1 2001:db8::1 51512 22" + crlf,
 	},
 }
 
@@ -235,9 +248,6 @@ func TestParseV1Valid(t *testing.T) {
 
 func TestWriteV1Valid(t *testing.T) {
 	for _, tt := range validParseAndWriteV1Tests {
-		if tt.skipWrite {
-			continue
-		}
 		t.Run(tt.desc, func(t *testing.T) {
 			var b bytes.Buffer
 			w := bufio.NewWriter(&b)
@@ -248,7 +258,17 @@ func TestWriteV1Valid(t *testing.T) {
 				t.Fatal("unexpected error ", err)
 			}
 
-			// Read written bytes to validate written header
+			// Assert the exact wire bytes. This is what pins address-family
+			// formatting (e.g. v4-mapped IPv6 rendering as ::ffff:x.x.x.x); the
+			// EqualsTo round-trip below is blind to it because it compares
+			// net.IP.String(), which collapses ::ffff:x.x.x.x back to x.x.x.x.
+			if got := b.String(); got != tt.expectedWrite {
+				t.Fatalf("expected wire %q, actual %q", tt.expectedWrite, got)
+			}
+
+			// Round-trip the written bytes to ensure the parser accepts what the
+			// formatter emits (catches format/parse drift that a byte check alone
+			// would miss).
 			r := bufio.NewReader(&b)
 			newHeader, err := Read(r)
 			if err != nil {
