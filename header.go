@@ -114,9 +114,15 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 			h.TransportProtocol = UDPv6
 		}
 	case *net.UnixAddr:
-		// Unix only needs the dest type to match; it reads no fields off destAddr,
-		// so this stays a blank assertion (binding it would be an unused variable).
-		if _, ok := destAddr.(*net.UnixAddr); !ok {
+		destAddr, ok := destAddr.(*net.UnixAddr)
+		if !ok {
+			break
+		}
+		// Both ends must agree on stream vs datagram: there is no meaningful
+		// connection mixing the two, so a mismatched pair stays UNSPEC rather than
+		// being labeled with the source's flavor alone. Mirrors the both-ends
+		// family selection used for TCP/UDP above.
+		if sourceAddr.Net != destAddr.Net {
 			break
 		}
 		switch sourceAddr.Net {
