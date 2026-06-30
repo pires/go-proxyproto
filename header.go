@@ -85,10 +85,16 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 	}
 	switch sourceAddr := sourceAddr.(type) {
 	case *net.TCPAddr:
+		// Both ends must be the same Addr type; bind destAddr to read its IP below.
 		destAddr, ok := destAddr.(*net.TCPAddr)
 		if !ok {
 			break
 		}
+		// Pick the family from BOTH addresses, not just the source: use v4 only
+		// when both are IPv4, otherwise fall back to v6 (the v4 side is then
+		// serialized as a v4-mapped IPv6, ::ffff:x.x.x.x). The previous
+		// source-only check mislabeled a v4-source/v6-dest pair as TCPv4 and then
+		// failed in formatVersion1.
 		switch {
 		case sourceAddr.IP.To4() != nil && destAddr.IP.To4() != nil:
 			h.TransportProtocol = TCPv4
@@ -100,6 +106,7 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 		if !ok {
 			break
 		}
+		// Same both-ends family selection as TCP above.
 		switch {
 		case sourceAddr.IP.To4() != nil && destAddr.IP.To4() != nil:
 			h.TransportProtocol = UDPv4
@@ -107,6 +114,8 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 			h.TransportProtocol = UDPv6
 		}
 	case *net.UnixAddr:
+		// Unix only needs the dest type to match; it reads no fields off destAddr,
+		// so this stays a blank assertion (binding it would be an unused variable).
 		if _, ok := destAddr.(*net.UnixAddr); !ok {
 			break
 		}

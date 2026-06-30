@@ -190,16 +190,26 @@ func (header *Header) formatVersion1() ([]byte, error) {
 		return nil, ErrInvalidAddress
 	}
 
+	// netip.Addr (not net.IP) is used here so String() honors the address family
+	// declared by TransportProtocol. AddrFromSlice reports ok=false when the slice
+	// is nil (e.g. To4() on an IPv6-only address), which the guard below rejects.
 	var sourceIP, destIP netip.Addr
 	switch header.TransportProtocol {
 	case TCPv4:
 		sourceIP, sourceOK = netip.AddrFromSlice(sourceAddr.IP.To4())
 		destIP, destOK = netip.AddrFromSlice(destAddr.IP.To4())
 	case TCPv6:
-		// Use netip.Addr instead net.IP so to guarantee Is6() address, ie a v4-mapped IP in a TCP6 header
-		// serializes as ::ffff:1.2.3.4 instead of net.IP.String()'s collapsed 1.2.3.4.
+		// Use netip.Addr instead of net.IP to guarantee an Is6() address; i.e. a
+		// v4-mapped IP in a TCP6 header serializes as ::ffff:1.2.3.4 instead of
+		// net.IP.String()'s collapsed 1.2.3.4.
 		sourceIP, sourceOK = netip.AddrFromSlice(sourceAddr.IP.To16())
 		destIP, destOK = netip.AddrFromSlice(destAddr.IP.To16())
+	default:
+		// Unreachable today: the proto switch at the top of this function already
+		// returns for anything other than TCPv4/TCPv6. Kept so a future protocol
+		// can't fall through with zero-value IPs while sourceOK/destOK still hold
+		// from the type assertion above.
+		return nil, ErrInvalidAddress
 	}
 	if !sourceOK || !destOK {
 		return nil, ErrInvalidAddress

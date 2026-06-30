@@ -603,6 +603,33 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 			},
 		},
 		{
+			// Mixed family (v4 source, genuine v6 dest) must resolve to TCPv6, not
+			// TCPv4. The old source-only logic chose TCPv4 here and then errored in
+			// formatVersion1; see the both-ends family selection in header.go.
+			name: "TCPv4SrcIPv6Dst",
+			sourceAddr: &net.TCPAddr{
+				IP:   net.ParseIP(testSourceIPv4Addr),
+				Port: 1000,
+			},
+			destAddr: &net.TCPAddr{
+				IP:   net.ParseIP("fde7::1"),
+				Port: 2000,
+			},
+			expected: &Header{
+				Version:           2,
+				Command:           PROXY,
+				TransportProtocol: TCPv6,
+				SourceAddr: &net.TCPAddr{
+					IP:   net.ParseIP(testSourceIPv4Addr),
+					Port: 1000,
+				},
+				DestinationAddr: &net.TCPAddr{
+					IP:   net.ParseIP("fde7::1"),
+					Port: 2000,
+				},
+			},
+		},
+		{
 			name: "UDPv4",
 			sourceAddr: &net.UDPAddr{
 				IP:   net.ParseIP(testSourceIPv4Addr),
