@@ -23,6 +23,22 @@ Both protocol versions, 1 (text-based) and 2 (binary-based) are supported.
 $ go get -u github.com/pires/go-proxyproto
 ```
 
+## Examples
+
+The fastest way to get started is the runnable programs under
+[`examples/`](examples) and the API examples on
+[pkg.go.dev](https://pkg.go.dev/github.com/pires/go-proxyproto#pkg-examples):
+
+| Goal | Where to look |
+| ---- | ------------- |
+| Minimal client | [`examples/client`](examples/client) |
+| Minimal server | [`examples/server`](examples/server) |
+| HTTP server | [`examples/httpserver`](examples/httpserver) |
+| Server + client over TLS (PROXY header before TLS) | [`examples/tlsserver`](examples/tlsserver), [`examples/tlsclient`](examples/tlsclient) |
+| `Listener` options: timeout, buffer size, policy, validation | [`ExampleListener_*`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-Listener) |
+| `NewConn` options | [`ExampleNewConn_*`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-NewConn) |
+| PROXY over TLS, both wrapping orders | [`ExampleListener_tls`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-Listener-Tls), [`ExampleListener_tlsHeaderInsideTLS`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-Listener-TlsHeaderInsideTLS) |
+
 ## Usage
 
 ### Client
@@ -46,7 +62,7 @@ func chkErr(err error) {
 
 func main() {
 	// Dial some proxy listener e.g. https://github.com/mailgun/proxyproto
-	target, err := net.ResolveTCPAddr("tcp", "127.0.0.1:2319")
+	target, err := net.ResolveTCPAddr("tcp", "127.0.0.1:9876")
 	chkErr(err)
 
 	conn, err := net.DialTCP("tcp", nil, target)
@@ -57,9 +73,9 @@ func main() {
 	// Create a proxyprotocol header or use HeaderProxyFromAddrs() if you
 	// have two conn's
 	header := &proxyproto.Header{
-		Version:            1,
-		Command:            proxyproto.PROXY,
-		TransportProtocol:  proxyproto.TCPv4,
+		Version:           1,
+		Command:           proxyproto.PROXY,
+		TransportProtocol: proxyproto.TCPv4,
 		SourceAddr: &net.TCPAddr{
 			IP:   net.ParseIP("10.1.1.1"),
 			Port: 1000,
@@ -104,6 +120,9 @@ func main() {
 
 	// Wait for a connection and accept it
 	conn, err := proxyListener.Accept()
+	if err != nil {
+		log.Fatalf("failed to accept connection: %v", err)
+	}
 	defer conn.Close()
 
 	// Print connection details
@@ -150,6 +169,41 @@ func main() {
 	server.Serve(proxyListener)
 }
 ```
+
+### TLS
+
+When combining the PROXY protocol with TLS, the only real decision is the order
+in which you wrap the listener, and it depends on where the upstream puts the
+PROXY header relative to the TLS handshake.
+
+**Header in cleartext, before the handshake** — the common case (e.g. AWS NLB
+with proxy protocol v2, or HAProxy `send-proxy` in front of a TLS backend).
+proxyproto must read the header first, so it goes **inside** the TLS listener:
+
+```go
+l, _ := net.Listen("tcp", addr)
+// proxyproto INNER, tls OUTER
+listener := tls.NewListener(&proxyproto.Listener{Listener: l}, tlsConfig)
+```
+
+**Header inside the TLS session, after the handshake** — only when you control
+the upstream and it deliberately sends the header post-handshake. TLS must be
+decrypted first, so proxyproto goes **outside** the TLS listener:
+
+```go
+l, _ := net.Listen("tcp", addr)
+// tls INNER, proxyproto OUTER
+listener := &proxyproto.Listener{Listener: tls.NewListener(l, tlsConfig)}
+```
+
+In both cases `conn.RemoteAddr()` returns the real client carried by the PROXY
+header. Runnable code lives in [`examples/tlsserver`](examples/tlsserver) and
+[`examples/tlsclient`](examples/tlsclient); the API examples
+[`ExampleListener_tls`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-Listener-Tls)
+and
+[`ExampleListener_tlsHeaderInsideTLS`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-Listener-TlsHeaderInsideTLS)
+show both orderings, and both are covered by tests (`Test_TLSServerHeaderBeforeTLS`,
+`Test_TLSServerHeaderInsideTLS`).
 
 ## Special notes
 
