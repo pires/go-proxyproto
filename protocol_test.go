@@ -1551,10 +1551,11 @@ func Test_ConnectionErrorsWhenHeaderValidationFails(t *testing.T) {
 }
 
 func Test_ConnectionHandlesInvalidUpstreamError(t *testing.T) {
-	l, err := net.Listen("tcp", "localhost:8080")
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("error creating listener: %v", err)
 	}
+	t.Cleanup(func() { _ = l.Close() })
 
 	var connectionCounter atomic.Int32
 
@@ -1573,22 +1574,22 @@ func Test_ConnectionHandlesInvalidUpstreamError(t *testing.T) {
 		},
 	}
 
-	// Kick off the listener and return any error via the chanel.
-	errCh := make(chan error)
-	defer close(errCh)
+	// Kick off the listener and return any error via the channel.
+	errCh := make(chan error, 1)
 	go func() {
 		_, err := newLn.Accept()
 		errCh <- err
 	}()
 
 	client := http.Client{Timeout: 200 * time.Millisecond}
+	url := "http://" + l.Addr().String()
 
 	// Make two calls to trigger the listener's accept, the first should experience
 	// the ErrInvalidUpstream and keep the listener open, the second should experience
 	// a different error which will cause the listener to close.
 
 	// First call should experience the ErrInvalidUpstream and keep the listener open.
-	resp, err := client.Get("http://localhost:8080")
+	resp, err := client.Get(url)
 	if resp != nil {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			t.Fatalf("failed to close response body: %v", closeErr)
@@ -1620,7 +1621,7 @@ func Test_ConnectionHandlesInvalidUpstreamError(t *testing.T) {
 	}
 
 	// Second call should experience a different error and cause the listener to close.
-	resp, err = client.Get("http://localhost:8080")
+	resp, err = client.Get(url)
 	if resp != nil {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			t.Fatalf("failed to close response body: %v", closeErr)
