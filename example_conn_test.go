@@ -17,7 +17,30 @@ func ExampleNewConn_default() {
 		_ = clientConn.Close()
 	}()
 
+	// NewConn applies DefaultReadHeaderTimeout while detecting the PROXY header,
+	// so a silent client cannot make header detection block forever. This bounds
+	// detection only; under the default policy a subsequent Read still reads the
+	// raw connection. Use the REQUIRE policy or set a read deadline to bound the
+	// first Read end-to-end.
 	conn := proxyproto.NewConn(serverConn)
+	buf := make([]byte, 1)
+	_, _ = conn.Read(buf)
+	// Output:
+}
+
+func ExampleNewConn_disableReadHeaderTimeout() {
+	serverConn, clientConn := net.Pipe()
+	defer func() { _ = serverConn.Close() }()
+	defer func() { _ = clientConn.Close() }()
+
+	go func() {
+		_, _ = clientConn.Write([]byte("d"))
+		_ = clientConn.Close()
+	}()
+
+	// NewConn applies DefaultReadHeaderTimeout by default; pass
+	// SetReadHeaderTimeout(0) to opt out and manage read deadlines yourself.
+	conn := proxyproto.NewConn(serverConn, proxyproto.SetReadHeaderTimeout(0))
 	buf := make([]byte, 1)
 	_, _ = conn.Read(buf)
 	// Output:
