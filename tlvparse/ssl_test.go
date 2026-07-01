@@ -1,6 +1,9 @@
 package tlvparse
 
 import (
+	"encoding/binary"
+	"errors"
+	"math"
 	"reflect"
 	"testing"
 
@@ -199,4 +202,186 @@ func TestPP2SSLMarshal(t *testing.T) {
 	if !reflect.DeepEqual(tlv, want) {
 		t.Errorf("PP2SSL.Marshal() = %#v, want %#v", tlv, want)
 	}
+}
+
+func TestPP2SSLClientCertAndFindSSL(t *testing.T) {
+	// Exercise the public convenience helpers that are not touched by the
+	// HAProxy fixture tests: finding the first well-formed SSL TLV and returning
+	// the raw client certificate subtype without copying or decoding it.
+	cert := []byte{0x30, 0x03, 0x01}
+	tlv := mustMarshalSSL(t, PP2SSL{
+		Client: PP2_BITFIELD_CLIENT_SSL,
+		Verify: 0,
+		TLV: []proxyproto.TLV{
+			{Type: proxyproto.PP2_SUBTYPE_SSL_VERSION, Value: []byte(tlsVersion13)},
+			{Type: proxyproto.PP2_SUBTYPE_SSL_CLIENT_CERT, Value: cert},
+		},
+	})
+
+	ssl, ok := FindSSL([]proxyproto.TLV{
+		{Type: proxyproto.PP2_TYPE_ALPN, Value: []byte("h2")},
+		tlv,
+	})
+	if !ok {
+		t.Fatal("expected to find SSL TLV")
+	}
+
+	gotCert, ok := ssl.ClientCert()
+	if !ok {
+		t.Fatal("expected client certificate TLV")
+	}
+	if !reflect.DeepEqual(gotCert, cert) {
+		t.Fatalf("unexpected certificate bytes: got %#v want %#v", gotCert, cert)
+	}
+
+	if _, ok := FindSSL([]proxyproto.TLV{{Type: proxyproto.PP2_TYPE_ALPN, Value: []byte("h2")}}); ok {
+		t.Fatal("unexpectedly found SSL TLV")
+	}
+
+	noTLS := mustMarshalSSL(t, PP2SSL{Client: 0, Verify: 1})
+	parsed, err := SSL(noTLS)
+	if err != nil {
+		t.Fatalf("unexpected non-TLS SSL TLV parse error: %v", err)
+	}
+	if _, ok := parsed.SSLVersion(); ok {
+		t.Fatal("unexpected SSL version when client SSL bit is not set")
+	}
+	if _, ok := parsed.ClientCert(); ok {
+		t.Fatal("unexpected client certificate when subtype is absent")
+	}
+}
+
+func TestSSLRejectsMalformedTLVs(t *testing.T) {
+	// Keep malformed SSL sub-TLV validation explicit. These cases protect the
+	// parser's stricter rules: TLS clients must include a non-empty ASCII version,
+	// CN must be valid UTF-8, and cipher/version fields must be ASCII.
+	validVersion := proxyproto.TLV{
+		Type:  proxyproto.PP2_SUBTYPE_SSL_VERSION,
+		Value: []byte(tlsVersion13),
+	}
+
+	tests := []struct {
+		name string
+		tlv  proxyproto.TLV
+		want error
+	}{
+		{
+			name: "incompatible type",
+			tlv:  proxyproto.TLV{Type: proxyproto.PP2_TYPE_ALPN, Value: make([]byte, tlvSSLMinLen)},
+			want: proxyproto.ErrIncompatibleTLV,
+		},
+		{
+			name: "short SSL value",
+			tlv:  proxyproto.TLV{Type: proxyproto.PP2_TYPE_SSL, Value: make([]byte, tlvSSLMinLen-1)},
+			want: proxyproto.ErrIncompatibleTLV,
+		},
+		{
+			name: "truncated sub TLV",
+			tlv:  sslTLV(PP2_BITFIELD_CLIENT_SSL, []byte{byte(proxyproto.PP2_SUBTYPE_SSL_VERSION), 0, 2, 'T'}),
+			want: proxyproto.ErrTruncatedTLV,
+		},
+		{
+			name: "missing required version",
+			tlv:  sslTLV(PP2_BITFIELD_CLIENT_SSL, nil),
+			want: proxyproto.ErrMalformedTLV,
+		},
+		{
+			name: "empty version",
+			tlv:  sslTLV(PP2_BITFIELD_CLIENT_SSL, mustJoinTLVs(t, proxyproto.TLV{Type: proxyproto.PP2_SUBTYPE_SSL_VERSION})),
+			want: proxyproto.ErrMalformedTLV,
+		},
+		{
+			name: "non ASCII version",
+			tlv: sslTLV(PP2_BITFIELD_CLIENT_SSL, mustJoinTLVs(t, proxyproto.TLV{
+				Type:  proxyproto.PP2_SUBTYPE_SSL_VERSION,
+				Value: []byte{0xff},
+			})),
+			want: proxyproto.ErrMalformedTLV,
+		},
+		{
+			name: "empty common name",
+			tlv: sslTLV(PP2_BITFIELD_CLIENT_SSL, mustJoinTLVs(t,
+				validVersion,
+				proxyproto.TLV{Type: proxyproto.PP2_SUBTYPE_SSL_CN},
+			)),
+			want: proxyproto.ErrMalformedTLV,
+		},
+		{
+			name: "invalid UTF-8 common name",
+			tlv: sslTLV(PP2_BITFIELD_CLIENT_SSL, mustJoinTLVs(t,
+				validVersion,
+				proxyproto.TLV{Type: proxyproto.PP2_SUBTYPE_SSL_CN, Value: []byte{0xff}},
+			)),
+			want: proxyproto.ErrMalformedTLV,
+		},
+		{
+			name: "empty cipher",
+			tlv: sslTLV(PP2_BITFIELD_CLIENT_SSL, mustJoinTLVs(t,
+				validVersion,
+				proxyproto.TLV{Type: proxyproto.PP2_SUBTYPE_SSL_CIPHER},
+			)),
+			want: proxyproto.ErrMalformedTLV,
+		},
+		{
+			name: "non ASCII cipher",
+			tlv: sslTLV(PP2_BITFIELD_CLIENT_SSL, mustJoinTLVs(t,
+				validVersion,
+				proxyproto.TLV{Type: proxyproto.PP2_SUBTYPE_SSL_CIPHER, Value: []byte{0xff}},
+			)),
+			want: proxyproto.ErrMalformedTLV,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := SSL(tt.tlv)
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("expected %v, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestPP2SSLMarshalPropagatesSubTLVError(t *testing.T) {
+	// Marshal delegates sub-TLV encoding to proxyproto.JoinTLVs; oversized
+	// sub-TLVs must surface that error instead of emitting an invalid SSL TLV.
+	_, err := PP2SSL{
+		TLV: []proxyproto.TLV{{
+			Type:  proxyproto.PP2_SUBTYPE_SSL_VERSION,
+			Value: make([]byte, math.MaxUint16+1),
+		}},
+	}.Marshal()
+	if err == nil {
+		t.Fatal("expected oversized sub-TLV error")
+	}
+}
+
+func mustMarshalSSL(t *testing.T, ssl PP2SSL) proxyproto.TLV {
+	t.Helper()
+
+	tlv, err := ssl.Marshal()
+	if err != nil {
+		t.Fatalf("failed to marshal SSL TLV: %v", err)
+	}
+	return tlv
+}
+
+func sslTLV(client uint8, rawSubTLVs []byte) proxyproto.TLV {
+	// Build the outer PP2_TYPE_SSL value directly so tests can inject malformed
+	// raw sub-TLV bytes that proxyproto.JoinTLVs would normally refuse to create.
+	value := make([]byte, tlvSSLMinLen)
+	value[0] = client
+	binary.BigEndian.PutUint32(value[1:5], 0)
+	value = append(value, rawSubTLVs...)
+	return proxyproto.TLV{Type: proxyproto.PP2_TYPE_SSL, Value: value}
+}
+
+func mustJoinTLVs(t *testing.T, tlvs ...proxyproto.TLV) []byte {
+	t.Helper()
+
+	raw, err := proxyproto.JoinTLVs(tlvs)
+	if err != nil {
+		t.Fatalf("failed to join TLVs: %v", err)
+	}
+	return raw
 }
