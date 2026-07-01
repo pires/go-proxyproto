@@ -90,6 +90,8 @@ func ValidateHeader(v Validator) func(*Conn) {
 }
 
 // SetReadHeaderTimeout sets the readHeaderTimeout for a connection when passed as option to NewConn().
+// A value of 0 disables the header read timeout; negative values are ignored,
+// leaving the connection's current timeout (the NewConn default) in place.
 func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
 	return func(c *Conn) {
 		if t >= 0 {
@@ -191,6 +193,20 @@ func (p *Listener) Addr() net.Addr {
 // NewConn is used to wrap a net.Conn that may be speaking the PROXY protocol
 // into a proxyproto.Conn.
 //
+// By default the returned Conn applies DefaultReadHeaderTimeout (10s) while
+// detecting the PROXY protocol header, so a client that connects but never
+// sends data cannot make header detection block forever.
+//
+// This bounds header detection only, not the first Read end-to-end: under a
+// non-REQUIRE policy, when no header is present Read falls through to a normal
+// read of the underlying connection, which can still block on a silent client
+// (pinning a goroutine and file descriptor). For an end-to-end bound, set a read
+// deadline on the connection, or use the REQUIRE policy, which makes the first
+// Read fail when no header arrives within the timeout.
+//
+// Override the timeout with the SetReadHeaderTimeout option; pass
+// SetReadHeaderTimeout(0) to disable it entirely.
+//
 // NOTE: NewConn may interfere with previously set ReadDeadline on the provided net.Conn,
 // because it sets a temporary deadline when detecting and reading the PROXY protocol header.
 // If you need to enforce a specific ReadDeadline on the connection, be sure to call Conn.SetReadDeadline
@@ -199,8 +215,9 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	br := bufio.NewReaderSize(conn, readBufferSize)
 
 	pConn := &Conn{
-		bufReader: br,
-		conn:      conn,
+		bufReader:         br,
+		conn:              conn,
+		readHeaderTimeout: DefaultReadHeaderTimeout,
 	}
 
 	for _, opt := range opts {

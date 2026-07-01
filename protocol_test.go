@@ -291,10 +291,37 @@ func TestNewConnSetReadHeaderTimeoutIgnoresNegative(t *testing.T) {
 	closeOnCleanup(t, "connection", conn)
 	closeOnCleanup(t, "peer connection", peer)
 
-	// Negative values should be ignored, leaving the timeout unset.
+	// Negative values are ignored, leaving the NewConn default in place.
 	proxyConn := NewConn(conn, SetReadHeaderTimeout(-1))
+	if proxyConn.readHeaderTimeout != DefaultReadHeaderTimeout {
+		t.Fatalf("expected readHeaderTimeout %v, got %v", DefaultReadHeaderTimeout, proxyConn.readHeaderTimeout)
+	}
+}
+
+func TestNewConnAppliesDefaultReadHeaderTimeout(t *testing.T) {
+	conn, peer := net.Pipe()
+	closeOnCleanup(t, "connection", conn)
+	closeOnCleanup(t, "peer connection", peer)
+
+	// A bare NewConn is safe-by-default: it applies DefaultReadHeaderTimeout so
+	// PROXY header detection is bounded. (Detection only — under the default USE
+	// policy the first Read can still block on a silent client; see
+	// TestNewConnDefaultTimeoutBoundsHeaderDetection.)
+	proxyConn := NewConn(conn)
+	if proxyConn.readHeaderTimeout != DefaultReadHeaderTimeout {
+		t.Fatalf("expected default readHeaderTimeout %v, got %v", DefaultReadHeaderTimeout, proxyConn.readHeaderTimeout)
+	}
+}
+
+func TestNewConnSetReadHeaderTimeoutZeroDisables(t *testing.T) {
+	conn, peer := net.Pipe()
+	closeOnCleanup(t, "connection", conn)
+	closeOnCleanup(t, "peer connection", peer)
+
+	// Zero explicitly disables the timeout, overriding the NewConn default.
+	proxyConn := NewConn(conn, SetReadHeaderTimeout(0))
 	if proxyConn.readHeaderTimeout != 0 {
-		t.Fatalf("expected readHeaderTimeout to remain 0, got %v", proxyConn.readHeaderTimeout)
+		t.Fatalf("expected readHeaderTimeout 0 (disabled), got %v", proxyConn.readHeaderTimeout)
 	}
 }
 
@@ -1783,6 +1810,10 @@ func (c *testConn) Read(_ []byte) (int, error) {
 	c.reads--
 	return 1, nil
 }
+
+// SetReadDeadline is a no-op so header processing (which now applies the default
+// read-header timeout) does not dereference the nil embedded net.Conn.
+func (c *testConn) SetReadDeadline(time.Time) error { return nil }
 
 func TestCopyToWrappedConnection(t *testing.T) {
 	innerConn := &testConn{}
