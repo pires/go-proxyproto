@@ -40,6 +40,12 @@ var (
 // is set, a default of 10s will be used. This can be disabled by setting the
 // timeout to < 0.
 //
+// Note that ReadHeaderTimeout only bounds how long a single slow connection can
+// hold a goroutine and file descriptor during header detection; it is not a
+// connection count or accept-rate limit. Deployments exposed to untrusted
+// clients should keep ReadHeaderTimeout low and enforce connection/rate limits
+// upstream (or around Accept).
+//
 // Only one of Policy or ConnPolicy should be provided. If both are provided then
 // a panic would occur during accept.
 type Listener struct {
