@@ -139,6 +139,99 @@ func TestReadHeaderTimeoutCancelsStalledRead(t *testing.T) {
 	}
 }
 
+func TestReadHeaderTimeoutNoHeaderPreservesData(t *testing.T) {
+	// The peer sends non-PROXY data. ReadHeaderTimeout must report "no header"
+	// without consuming those bytes, so the caller can still read them.
+	client, server := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+
+	const want = "GET / HTTP/1.1\r\n"
+	go func() {
+		_, _ = client.Write([]byte(want))
+		_ = client.Close()
+	}()
+
+	reader := bufio.NewReader(server)
+	h, err := ReadHeaderTimeout(server, reader, time.Second)
+	if err != ErrNoProxyProtocol {
+		t.Fatalf("expected %v, got %v", ErrNoProxyProtocol, err)
+	}
+	if h != nil {
+		t.Fatalf("expected nil header, got %+v", h)
+	}
+
+	got := make([]byte, len(want))
+	n, err := reader.Read(got)
+	if err != nil {
+		t.Fatalf("reading preserved data: %v", err)
+	}
+	if string(got[:n]) != want {
+		t.Fatalf("non-PROXY data not preserved: got %q", string(got[:n]))
+	}
+}
+
+func TestReadHeaderTimeoutZeroTimeoutReadsWithoutDeadline(t *testing.T) {
+	// A timeout <= 0 must skip the deadline entirely and still read a header.
+	client, server := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+
+	go func() {
+		_, _ = client.Write([]byte("PROXY TCP4 10.1.1.1 20.2.2.2 1000 2000\r\n"))
+		_ = client.Close()
+	}()
+
+	reader := bufio.NewReader(server)
+	h, err := ReadHeaderTimeout(server, reader, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if h == nil || h.SourceAddr.String() != "10.1.1.1:1000" {
+		t.Fatalf("unexpected header: %+v", h)
+	}
+}
+
+func TestReadHeaderTimeoutInitialDeadlineError(t *testing.T) {
+	// If arming the deadline fails, the error is returned and no read is done.
+	inner := &deadlineFailConn{
+		r:         bytes.NewReader([]byte("PROXY TCP4 10.1.1.1 20.2.2.2 1000 2000\r\n")),
+		failOnSet: 1,
+	}
+	reader := bufio.NewReader(inner)
+	if _, err := ReadHeaderTimeout(inner, reader, time.Second); !errors.Is(err, errDeadlineFail) {
+		t.Fatalf("expected the SetReadDeadline error, got %v", err)
+	}
+	if inner.setCalls != 1 {
+		t.Fatalf("expected exactly one SetReadDeadline call, got %d", inner.setCalls)
+	}
+}
+
+func TestReadHeaderTimeoutPropagatesParseError(t *testing.T) {
+	// A valid PROXY v1 signature but an invalid body must surface the parse
+	// error, not be masked as ErrNoProxyProtocol.
+	client, server := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+
+	go func() {
+		_, _ = client.Write([]byte("PROXY TCP4 10.1.1.1 20.2.2.2 notaport 2000\r\n"))
+		_ = client.Close()
+	}()
+
+	reader := bufio.NewReader(server)
+	_, err := ReadHeaderTimeout(server, reader, time.Second)
+	if err == nil || err == ErrNoProxyProtocol {
+		t.Fatalf("expected a parse error, got %v", err)
+	}
+}
+
 func TestEqualsTo(t *testing.T) {
 	var headersEqual = []struct {
 		this, that *Header
