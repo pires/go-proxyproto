@@ -37,7 +37,13 @@ func TestProxy(t *testing.T) {
 }
 
 func TestInvalidProtocolVersion(t *testing.T) {
-	if !ProtocolVersionAndCommand(0x00).IsUnspec() {
+	invalid := ProtocolVersionAndCommand(0x00)
+	if !invalid.IsUnspec() {
+		t.Fail()
+	}
+	// Unknown commands are serialized as LOCAL, which is the conservative v2
+	// default because it carries no client address information.
+	if invalid.toByte() != byte(LOCAL) {
 		t.Fail()
 	}
 }

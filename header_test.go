@@ -321,6 +321,15 @@ func TestEqualsTo(t *testing.T) {
 	}
 }
 
+func TestEqualToDeprecatedWrapper(t *testing.T) {
+	// EqualTo is kept only for compatibility; this test locks it to the same
+	// behavior as EqualsTo so the deprecated wrapper cannot drift before removal.
+	header := testTCPv4Header()
+	if !header.EqualTo(header) {
+		t.Fatal("EqualTo did not delegate to EqualsTo")
+	}
+}
+
 // This is here just because of coveralls.
 func TestEqualTo(t *testing.T) {
 	TestEqualsTo(t)
