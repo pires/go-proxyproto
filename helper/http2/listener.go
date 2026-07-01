@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+// pipeAddrNetwork is the synthetic network/address name used by pipeListener.
+// It exists only for logs and contexts because pipeListener is an in-memory
+// handoff mechanism, not an OS-backed listener.
+const pipeAddrNetwork = "pipe"
+
 // pipeListener is a hack to workaround the lack of http.Server.ServeConn.
 // See: https://github.com/golang/go/issues/36673
 type pipeListener struct {
@@ -59,9 +64,9 @@ func (ln *pipeListener) Addr() net.Addr {
 type pipeAddr struct{}
 
 func (pipeAddr) Network() string {
-	return "pipe"
+	return pipeAddrNetwork
 }
 
 func (pipeAddr) String() string {
-	return "pipe"
+	return pipeAddrNetwork
 }
