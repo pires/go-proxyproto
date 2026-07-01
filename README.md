@@ -41,170 +41,50 @@ The fastest way to get started is the runnable programs under
 
 ## Usage
 
-### Client
+Use the full runnable examples above for complete programs. The core API shape is
+small:
+
+### Client side
 
 ```go
-package main
-
-import (
-	"io"
-	"log"
-	"net"
-
-	proxyproto "github.com/pires/go-proxyproto"
-)
-
-func chkErr(err error) {
-	if err != nil {
-		log.Fatalf("Error: %s", err.Error())
-	}
-}
-
-func main() {
-	// Dial a listener that understands the PROXY protocol, e.g. the server in
-	// examples/server.
-	target, err := net.ResolveTCPAddr("tcp", "127.0.0.1:9876")
-	chkErr(err)
-
-	conn, err := net.DialTCP("tcp", nil, target)
-	chkErr(err)
-
-	defer conn.Close()
-
-	// Create a proxyprotocol header or use HeaderProxyFromAddrs() if you
-	// have two conn's
-	header := &proxyproto.Header{
-		Version:           1,
-		Command:           proxyproto.PROXY,
-		TransportProtocol: proxyproto.TCPv4,
-		SourceAddr: &net.TCPAddr{
-			IP:   net.ParseIP("10.1.1.1"),
-			Port: 1000,
-		},
-		DestinationAddr: &net.TCPAddr{
-			IP:   net.ParseIP("20.2.2.2"),
-			Port: 2000,
-		},
-	}
-	// After the connection was created write the proxy headers first
-	_, err = header.WriteTo(conn)
-	chkErr(err)
-	// Then your data... e.g.:
-	_, err = io.WriteString(conn, "HELO")
-	chkErr(err)
-}
+header := proxyproto.HeaderProxyFromAddrs(1, sourceAddr, destinationAddr)
+_, err := header.WriteTo(conn) // write the PROXY header before application data
 ```
 
-### Server
+See [`examples/client`](examples/client) for a complete TCP client.
+
+### Server side
 
 ```go
-package main
-
-import (
-	"log"
-	"net"
-
-	proxyproto "github.com/pires/go-proxyproto"
-)
-
-func main() {
-	// Create a listener
-	addr := "localhost:9876"
-	list, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatalf("couldn't listen to %q: %q\n", addr, err.Error())
-	}
-
-	// Wrap listener in a proxyproto listener
-	proxyListener := &proxyproto.Listener{Listener: list}
-	defer proxyListener.Close()
-
-	// Wait for a connection and accept it
-	conn, err := proxyListener.Accept()
-	if err != nil {
-		log.Fatalf("failed to accept connection: %v", err)
-	}
-	defer conn.Close()
-
-	// Print connection details
-	if conn.LocalAddr() == nil {
-		log.Fatal("couldn't retrieve local address")
-	}
-	log.Printf("local address: %q", conn.LocalAddr().String())
-
-	if conn.RemoteAddr() == nil {
-		log.Fatal("couldn't retrieve remote address")
-	}
-	log.Printf("remote address: %q", conn.RemoteAddr().String())
-}
+proxyListener := &proxyproto.Listener{Listener: ln}
+conn, err := proxyListener.Accept()
+// conn.RemoteAddr() now reports the client address from the PROXY header, when present.
 ```
 
-### HTTP Server
-```go
-package main
-
-import (
-	"net"
-	"net/http"
-	"time"
-
-	"github.com/pires/go-proxyproto"
-)
-
-func main() {
-	server := http.Server{
-		Addr: ":8080",
-	}
-
-	ln, err := net.Listen("tcp", server.Addr)
-	if err != nil {
-		panic(err)
-	}
-
-	proxyListener := &proxyproto.Listener{
-		Listener:          ln,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-	defer proxyListener.Close()
-
-	server.Serve(proxyListener)
-}
-```
+See [`examples/server`](examples/server) for a complete TCP server. For HTTP/1
+and HTTP/2, see [`examples/httpserver`](examples/httpserver), which uses
+[`helper/http2`](helper/http2) so one server can accept proxied HTTP/1 and HTTP/2
+connections.
 
 ### TLS
 
-When combining the PROXY protocol with TLS, the only real decision is the order
-in which you wrap the listener, and it depends on where the upstream puts the
-PROXY header relative to the TLS handshake.
+When combining the PROXY protocol with TLS, choose the wrapping order based on
+where the upstream puts the PROXY header relative to the TLS handshake:
 
-**Header in cleartext, before the handshake** — the common case (e.g. AWS NLB
-with proxy protocol v2, or HAProxy `send-proxy` in front of a TLS backend).
-proxyproto must read the header first, so it goes **inside** the TLS listener:
+- **Header in cleartext, before the handshake**: proxyproto reads the header
+  first, so it goes inside the TLS listener:
+  `tls.NewListener(&proxyproto.Listener{Listener: l}, tlsConfig)`.
+- **Header inside the TLS session, after the handshake**: TLS decrypts first, so
+  proxyproto wraps the TLS listener:
+  `&proxyproto.Listener{Listener: tls.NewListener(l, tlsConfig)}`.
 
-```go
-l, _ := net.Listen("tcp", addr)
-// proxyproto INNER, tls OUTER
-listener := tls.NewListener(&proxyproto.Listener{Listener: l}, tlsConfig)
-```
-
-**Header inside the TLS session, after the handshake** — only when you control
-the upstream and it deliberately sends the header post-handshake. TLS must be
-decrypted first, so proxyproto goes **outside** the TLS listener:
-
-```go
-l, _ := net.Listen("tcp", addr)
-// tls INNER, proxyproto OUTER
-listener := &proxyproto.Listener{Listener: tls.NewListener(l, tlsConfig)}
-```
-
-In both cases `conn.RemoteAddr()` returns the real client carried by the PROXY
+In both cases `conn.RemoteAddr()` reports the client carried by the PROXY
 header. Runnable code lives in [`examples/tlsserver`](examples/tlsserver) and
 [`examples/tlsclient`](examples/tlsclient); the API examples
 [`ExampleListener_tls`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-Listener-Tls)
 and
 [`ExampleListener_tlsHeaderInsideTLS`](https://pkg.go.dev/github.com/pires/go-proxyproto#example-Listener-TlsHeaderInsideTLS)
-show both orderings, and both are covered by tests (`Test_TLSServerHeaderBeforeTLS`,
-`Test_TLSServerHeaderInsideTLS`).
+show both orderings.
 
 ## Special notes
 
