@@ -79,6 +79,66 @@ func TestReadTimeoutPropagatesReadError(t *testing.T) {
 	}
 }
 
+func TestReadHeaderTimeoutParsesHeaderAndPreservesPayload(t *testing.T) {
+	client, server := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+
+	const payload = "hello"
+	go func() {
+		_, _ = client.Write([]byte("PROXY TCP4 127.0.0.1 127.0.0.2 12345 443\r\n" + payload))
+		_ = client.Close()
+	}()
+
+	reader := bufio.NewReader(server)
+	h, err := ReadHeaderTimeout(server, reader, time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if h == nil || h.Version != 1 {
+		t.Fatalf("expected a v1 header, got %+v", h)
+	}
+
+	// Bytes buffered past the header must remain readable by the caller.
+	got := make([]byte, len(payload))
+	n, err := reader.Read(got)
+	if err != nil {
+		t.Fatalf("reading buffered payload: %v", err)
+	}
+	if string(got[:n]) != payload {
+		t.Fatalf("expected payload %q, got %q", payload, string(got[:n]))
+	}
+}
+
+func TestReadHeaderTimeoutCancelsStalledRead(t *testing.T) {
+	// The peer connects but never sends anything. Without a real deadline this
+	// would block forever (the failure the deprecated ReadTimeout leaks on);
+	// ReadHeaderTimeout has the conn, so its deadline actually fires.
+	client, server := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+
+	reader := bufio.NewReader(server)
+	start := time.Now()
+	h, err := ReadHeaderTimeout(server, reader, 50*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if err != ErrNoProxyProtocol {
+		t.Fatalf("expected %v, got %v", ErrNoProxyProtocol, err)
+	}
+	if h != nil {
+		t.Fatalf("expected nil header, got %+v", h)
+	}
+	// Generous slack for slow CI; the point is that it returns at all.
+	if elapsed > 2*time.Second {
+		t.Fatalf("read did not cancel promptly: elapsed=%v", elapsed)
+	}
+}
+
 func TestEqualsTo(t *testing.T) {
 	var headersEqual = []struct {
 		this, that *Header
