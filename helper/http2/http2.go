@@ -105,6 +105,9 @@ func (srv *Server) Serve(ln net.Listener) error {
 			}
 			srv.errorLog().Printf("listener %q: accept error (retrying in %v): %v", ln.Addr(), delay, err)
 			time.Sleep(delay)
+			// Retry Accept after a temporary listener error. There is no
+			// connection to serve on this iteration.
+			continue
 		} else if err != nil {
 			if srv.isClosed() {
 				return http.ErrServerClosed
