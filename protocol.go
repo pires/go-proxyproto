@@ -393,11 +393,17 @@ func (p *Conn) readHeader() error {
 		if t == nil {
 			t = time.Time{}
 		}
-		if err := p.conn.SetReadDeadline(t.(time.Time)); err != nil {
-			return err
-		}
+		// Restore the user's deadline on a best-effort basis. This must not
+		// discard a header we already parsed: some connections (notably
+		// net.Pipe) return an error from SetReadDeadline once the peer has
+		// closed, which can happen right after the peer sends the header and
+		// closes. Only surface a restore failure when the read produced neither
+		// a header nor an error of its own.
+		restoreErr := p.conn.SetReadDeadline(t.(time.Time))
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			err = ErrNoProxyProtocol
+		} else if err == nil && header == nil {
+			err = restoreErr
 		}
 	}
 
