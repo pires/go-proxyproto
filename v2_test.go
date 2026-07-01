@@ -450,7 +450,11 @@ func TestV2EqualsToTLV(t *testing.T) {
 	if eHdr.EqualsTo(hdr) {
 		t.Fatalf("unexpectedly equal created: %#v, parsed: %#v", eHdr, hdr)
 	}
-	eHdr.rawTLVs = fixtureTLV[:]
+	// Clone rather than alias: the mutation below would otherwise corrupt the
+	// package-level fixtureTLV in place and break any test that runs later and
+	// expects fixtureTLV (e.g. TestParseV2Valid's *_with_TLV cases) under
+	// go test -shuffle.
+	eHdr.rawTLVs = bytes.Clone(fixtureTLV)
 
 	if !eHdr.EqualsTo(hdr) {
 		t.Fatalf("unexpectedly unequal after tlv copy created: %#v, parsed: %#v", eHdr, hdr)

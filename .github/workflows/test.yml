@@ -24,7 +24,7 @@ jobs:
         go get github.com/mattn/goveralls
 
     - name: Test
-      run: go test -race -v -covermode=atomic -coverprofile=coverage.out
+      run: go test -race -shuffle=on -v -covermode=atomic -coverprofile=coverage.out
 
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
