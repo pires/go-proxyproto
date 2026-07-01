@@ -164,13 +164,15 @@ func (p *Listener) Accept() (net.Conn, error) {
 		}
 		newConn := NewConn(conn, opts...)
 
-		// If the ReadHeaderTimeout for the listener is unset, use the default timeout.
-		if p.ReadHeaderTimeout == 0 {
-			p.ReadHeaderTimeout = DefaultReadHeaderTimeout
+		// Set the readHeaderTimeout of the new conn to the value of the listener,
+		// falling back to the default when unset. Read into a local rather than
+		// writing back to the shared Listener: mutating p here races with
+		// concurrent Accept calls and would silently rewrite the caller's struct.
+		readHeaderTimeout := p.ReadHeaderTimeout
+		if readHeaderTimeout == 0 {
+			readHeaderTimeout = DefaultReadHeaderTimeout
 		}
-
-		// Set the readHeaderTimeout of the new conn to the value of the listener
-		newConn.readHeaderTimeout = p.ReadHeaderTimeout
+		newConn.readHeaderTimeout = readHeaderTimeout
 
 		return newConn, nil
 	}

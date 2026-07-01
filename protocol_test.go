@@ -582,6 +582,36 @@ func TestReadHeaderTimeoutIsReset(t *testing.T) {
 	expectClientOK(t, cliResult)
 }
 
+func TestAcceptDoesNotMutateListenerReadHeaderTimeout(t *testing.T) {
+	l := newLocalListener(t)
+
+	// ReadHeaderTimeout is left unset (0): Accept must resolve the default into
+	// the connection without writing it back onto the shared Listener.
+	pl := &Listener{Listener: l}
+
+	cliResult := make(chan error, 1)
+	go func() {
+		c, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			cliResult <- err
+			return
+		}
+		closeOnCleanup(t, "client connection", c)
+		close(cliResult)
+	}()
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("accept: %v", err)
+	}
+	closeOnCleanup(t, "connection", conn)
+
+	if pl.ReadHeaderTimeout != 0 {
+		t.Fatalf("Accept mutated Listener.ReadHeaderTimeout: got %v, want 0", pl.ReadHeaderTimeout)
+	}
+	expectClientOK(t, cliResult)
+}
+
 // TestReadHeaderTimeoutIsEmpty ensures the default is set if it is empty.
 // The default is 10s, but we delay sending a message, so use 200ms in this test.
 // We expect the actual address and port to be returned,
