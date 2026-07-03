@@ -6,6 +6,8 @@ import (
 	iorand "crypto/rand"
 	"encoding/binary"
 	"errors"
+	"io"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -51,6 +53,14 @@ var (
 	fixtureIPv6V2Padded = append(append(lengthPaddedBytes, fixtureIPv6Address...), make([]byte, lengthPadded-lengthV6)...)
 	fixtureUnixAddress  = append(unixBytes, unixBytes...)
 	fixtureUnixV2       = append(lengthUnixBytes, fixtureUnixAddress...)
+
+	// Unix address block plus 4 bytes of padding declared in the length.
+	lengthUnixPaddedBytes = func() []byte {
+		a := make([]byte, 2)
+		binary.BigEndian.PutUint16(a, lengthUnix+4)
+		return a
+	}()
+	fixtureUnixV2Padded = append(append(lengthUnixPaddedBytes, fixtureUnixAddress...), make([]byte, 4)...)
 	fixtureTLV          = func() []byte {
 		tlv := make([]byte, 100)
 		_, _ = iorand.Read(tlv)
@@ -58,6 +68,7 @@ var (
 	}()
 	fixtureIPv4V2TLV = fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, fixtureTLV)
 	fixtureIPv6V2TLV = fixtureWithTLV(lengthV6Bytes, fixtureIPv6Address, fixtureTLV)
+	fixtureUnixV2TLV = fixtureWithTLV(lengthUnixBytes, fixtureUnixAddress, fixtureTLV)
 	fixtureUnspecTLV = fixtureWithTLV(lengthUnspecBytes, []byte{}, fixtureTLV)
 
 	fixtureMediumTLV   = make([]byte, 2048)
@@ -111,9 +122,9 @@ var invalidParseV2Tests = []struct {
 		expectedError: ErrUnsupportedAddressFamilyAndProtocol,
 	},
 	{
-		desc:          "v2 signature with command and invalid inet family", // translated to UNSPEC
+		desc:          "v2 signature with command and invalid inet family",
 		reader:        newBufioReader(append(SIGV2, byte(PROXY), invalidRune)),
-		expectedError: ErrCantReadLength,
+		expectedError: ErrUnsupportedAddressFamilyAndProtocol,
 	},
 	{
 		desc:          "TCPv4 but no length",
@@ -160,6 +171,49 @@ var invalidParseV2Tests = []struct {
 		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureV2TooLargeTLV...)),
 		expectedError: ErrInvalidLength,
 	},
+	// Representative undefined family/transport byte. Exhaustive coverage of
+	// all 256 byte values under both PROXY and LOCAL commands (spec section
+	// 2.2: "must be rejected as invalid by receivers") lives in
+	// TestV2UndefinedTransportRejected.
+	{
+		desc:          "IPv4 family with undefined transport 0x13",
+		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), 0x13), lengthV4Bytes...)),
+		expectedError: ErrUnsupportedAddressFamilyAndProtocol,
+	},
+	// Byte 13 with a valid command nibble but the wrong version nibble (v1
+	// instead of the mandated \x2) pins the version check specifically;
+	// invalidRune above is wrong in both nibbles.
+	{
+		desc:          "version nibble 0x1 with valid PROXY command nibble",
+		reader:        newBufioReader(append(SIGV2, 0x11)),
+		expectedError: ErrUnsupportedProtocolVersionAndCommand,
+	},
+	// A LOCAL frame whose length fits its family layout is decoded like PROXY,
+	// so a truncated address block keeps reporting ErrInvalidAddress.
+	{
+		desc:          "LOCAL TCPv4 with mismatching length",
+		reader:        newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), lengthV4Bytes...)),
+		expectedError: ErrInvalidAddress,
+	},
+	{
+		desc:          "unix stream with mismatching length",
+		reader:        newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixStream)), lengthUnixBytes...)),
+		expectedError: ErrInvalidAddress,
+	},
+	// Declared length includes TLV bytes the stream never delivers.
+	{
+		desc: "TCPv4 with truncated TLV bytes",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)),
+			fixtureWithTLV(lengthV4Bytes, fixtureIPv4Address, make([]byte, 8))[:len(lengthV4Bytes)+len(fixtureIPv4Address)+3]...)),
+		expectedError: io.ErrUnexpectedEOF,
+	},
+	// A LOCAL frame on the skip path (length does not fit the family layout)
+	// whose payload is truncated on the wire.
+	{
+		desc:          "LOCAL TCPv4 short block truncated on the wire",
+		reader:        newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), 0x00, 0x05, 0xAA, 0xBB)),
+		expectedError: ErrInvalidLength,
+	},
 }
 
 func TestParseV2Invalid(t *testing.T) {
@@ -172,13 +226,84 @@ func TestParseV2Invalid(t *testing.T) {
 	}
 }
 
+// TestParseV2MaxHeaderSizeBoundary pins the MaxV2HeaderSize limit: a length
+// field of exactly the limit is accepted, one byte more is rejected, and the
+// limit is overridable for deployments expecting larger headers (e.g. the
+// PP2_SUBTYPE_SSL_CLIENT_CERT TLV carrying a certificate chain).
+func TestParseV2MaxHeaderSizeBoundary(t *testing.T) {
+	parse := func(payloadLen int) error {
+		raw := v2Header(byte(PROXY), byte(TCPv4), make([]byte, payloadLen))
+		_, err := Read(bufio.NewReader(bytes.NewReader(raw)))
+		return err
+	}
+
+	if err := parse(int(MaxV2HeaderSize)); err != nil {
+		t.Fatalf("length == MaxV2HeaderSize must parse, got %v", err)
+	}
+	if err := parse(int(MaxV2HeaderSize) + 1); !errors.Is(err, ErrInvalidLength) {
+		t.Fatalf("length > MaxV2HeaderSize must fail with ErrInvalidLength, got %v", err)
+	}
+
+	MaxV2HeaderSize = 8192
+	defer func() { MaxV2HeaderSize = 4096 }()
+	if err := parse(8000); err != nil {
+		t.Fatalf("raised MaxV2HeaderSize must accept larger headers, got %v", err)
+	}
+
+	// The LOCAL skip path (length does not fit the family layout) applies the
+	// same bound before discarding the payload.
+	MaxV2HeaderSize = 64
+	rawLocal := v2Header(byte(LOCAL), byte(UnixStream), make([]byte, 100))
+	if _, err := Read(bufio.NewReader(bytes.NewReader(rawLocal))); !errors.Is(err, ErrInvalidLength) {
+		t.Fatalf("LOCAL skip path must enforce MaxV2HeaderSize, got %v", err)
+	}
+}
+
+// TestValidateLengthUndefinedFamily pins the defensive false for family bytes
+// outside the spec: unreachable through Read (the whitelist rejects them
+// first) but load-bearing if validateLength gains new callers.
+func TestValidateLengthUndefinedFamily(t *testing.T) {
+	h := &Header{TransportProtocol: AddressFamilyAndProtocol(0x99)}
+	if h.validateLength(216) {
+		t.Fatal("undefined family must not validate any length")
+	}
+}
+
+// TestNewIPAddrFallback pins the defensive nil for a transport that is neither
+// stream nor datagram: unreachable through Read (the whitelist rejects such
+// bytes first) but the nil contract is what the whitelist protects callers of
+// RemoteAddr().String() from.
+func TestNewIPAddrFallback(t *testing.T) {
+	if addr := newIPAddr(AddressFamilyAndProtocol(0x13), net.ParseIP("10.0.0.1"), 80); addr != nil {
+		t.Fatalf("expected nil net.Addr for undefined transport, got %v", addr)
+	}
+}
+
+// TestFormatV2InvalidPorts pins the v2 format-side port validation, mirroring
+// the v1 test: the spec's port range is 0..65535 and a hand-built header must
+// not serialize values outside it.
+func TestFormatV2InvalidPorts(t *testing.T) {
+	for _, port := range []int{-1, 65536, 700000} {
+		header := &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("10.1.1.1"), Port: port},
+			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("20.2.2.2"), Port: 443},
+		}
+		if _, err := header.Format(); !errors.Is(err, ErrInvalidPortNumber) {
+			t.Fatalf("port %d: expected ErrInvalidPortNumber, got %v", port, err)
+		}
+	}
+}
+
 var validParseAndWriteV2Tests = []struct {
 	desc           string
 	reader         *bufio.Reader
 	expectedHeader *Header
 }{
 	{
-		desc:   "local",
+		desc:   "local", // full family address block is decoded and round-trips
 		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(TCPv4)), fixtureIPv4V2...)),
 		expectedHeader: &Header{
 			Version:           2,
@@ -301,6 +426,34 @@ var validParseAndWriteV2Tests = []struct {
 			DestinationAddr:   unixDatagramAddr,
 		},
 	},
+	// Regression: the Unix branch of formatVersion2 used to write the fixed
+	// 216-byte length while still appending TLVs after the address block, so the
+	// declared length undercounted and a downstream parser read the TLV bytes as
+	// application payload.
+	{
+		desc:   "proxy unix stream with TLV",
+		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(UnixStream)), fixtureUnixV2TLV...)),
+		expectedHeader: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UnixStream,
+			SourceAddr:        unixStreamAddr,
+			DestinationAddr:   unixStreamAddr,
+			rawTLVs:           fixtureTLV,
+		},
+	},
+	{
+		desc:   "local unix stream with TLV",
+		reader: newBufioReader(append(append(SIGV2, byte(LOCAL), byte(UnixStream)), fixtureUnixV2TLV...)),
+		expectedHeader: &Header{
+			Version:           2,
+			Command:           LOCAL,
+			TransportProtocol: UnixStream,
+			SourceAddr:        unixStreamAddr,
+			DestinationAddr:   unixStreamAddr,
+			rawTLVs:           fixtureTLV,
+		},
+	},
 	{
 		desc:   "proxy TCPv4 with medium TLV",
 		reader: newBufioReader(append(append(SIGV2, byte(PROXY), byte(TCPv4)), fixtureV2MediumTLV...)),
@@ -397,6 +550,18 @@ var validParseV2PaddedTests = []struct {
 		},
 	},
 	{
+		desc:  "proxy unix stream",
+		value: append(append(SIGV2, byte(PROXY), byte(UnixStream)), fixtureUnixV2Padded...),
+		expectedHeader: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UnixStream,
+			SourceAddr:        unixStreamAddr,
+			DestinationAddr:   unixStreamAddr,
+			rawTLVs:           make([]byte, 4),
+		},
+	},
+	{
 		desc:  "proxy UDPv6",
 		value: append(append(SIGV2, byte(PROXY), byte(UDPv6)), fixtureIPv6V2Padded...),
 		expectedHeader: &Header{
@@ -470,6 +635,17 @@ var tlvFormatTests = []struct {
 	desc   string
 	header *Header
 }{
+	{
+		desc: "unix stream",
+		header: &Header{
+			Version:           2,
+			Command:           PROXY,
+			TransportProtocol: UnixStream,
+			SourceAddr:        unixStreamAddr,
+			DestinationAddr:   unixStreamAddr,
+			rawTLVs:           make([]byte, 1<<16),
+		},
+	},
 	{
 		desc: "proxy TCPv4",
 		header: &Header{
