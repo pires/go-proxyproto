@@ -13,18 +13,23 @@ jobs:
       matrix:
         go: ['1.25', '1.26']
     steps:
-    - uses: actions/setup-go@v4
+    - uses: actions/setup-go@v6
       with:
         go-version: ${{ matrix.go }}
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Get dependencies
       run: |
         go get golang.org/x/tools/cmd/cover
         go get github.com/mattn/goveralls
 
+    # The example runnables carry no tests and would only drag the coverage
+    # metric down, but they must still compile.
+    - name: Build (including examples)
+      run: go build ./...
+
     - name: Test
-      run: go test -race -shuffle=on -v -covermode=atomic -coverprofile=coverage.out ./...
+      run: go test -race -shuffle=on -v -covermode=atomic -coverprofile=coverage.out $(go list ./... | grep -v '/examples/')
 
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
@@ -33,6 +38,78 @@ jobs:
         path-to-profile: coverage.out
         flag-name: Go-${{ matrix.go }}
         parallel: true
+
+  # Runs each Go fuzz target for a bounded time. This is mutation fuzzing on top
+  # of the seed corpus that the regular `test` job already exercises. Targets are
+  # discovered automatically, so new FuzzXxx functions are picked up without
+  # editing this workflow. A discovered crasher fails the job and is uploaded so
+  # it can be reproduced locally.
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+      # Per-target fuzzing budget. Kept short for PR feedback; override via a
+      # scheduled/dispatch run for deeper campaigns.
+      FUZZTIME: 40s
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.25', '1.26']
+    steps:
+    - uses: actions/setup-go@v6
+      with:
+        go-version: ${{ matrix.go }}
+    - uses: actions/checkout@v7
+
+    - name: Fuzz
+      run: |
+        set -euo pipefail
+        fail=0
+        targets=0
+        for pkg in $(go list ./...); do
+          # Capture the listing separately so a `go test -list` failure (e.g.
+          # the package's test binary does not compile) fails the job instead
+          # of silently yielding zero targets and a green check.
+          listing=$(go test -list '^Fuzz' "$pkg")
+          for fn in $(printf '%s\n' "$listing" | grep -E '^Fuzz' || true); do
+            targets=$((targets + 1))
+            echo "::group::Fuzzing ${fn} (${pkg})"
+            # Go's fuzz coordinator can lose a shutdown race at the -fuzztime
+            # boundary on slow runners and fail with a bare "context deadline
+            # exceeded" without a crasher (golang/go#72104). Retry the target
+            # once on that exact signature; a real finding always writes a
+            # reproducer ("Failing input written to testdata/fuzz/...") and
+            # still fails the job.
+            if ! out=$(go test -run '^$' -fuzz "^${fn}$" -fuzztime "${FUZZTIME}" "$pkg" 2>&1); then
+              echo "${out}"
+              if echo "${out}" | grep -q 'context deadline exceeded' \
+                && ! echo "${out}" | grep -q 'Failing input written'; then
+                echo "known Go fuzz shutdown flake (golang/go#72104); retrying ${fn} once"
+                if ! go test -run '^$' -fuzz "^${fn}$" -fuzztime "${FUZZTIME}" "$pkg"; then
+                  fail=1
+                fi
+              else
+                fail=1
+              fi
+            else
+              echo "${out}"
+            fi
+            echo "::endgroup::"
+          done
+        done
+        if [ "${targets}" -eq 0 ]; then
+          echo "error: no fuzz targets discovered, but this module defines FuzzXxx functions" >&2
+          exit 1
+        fi
+        exit "${fail}"
+
+    - name: Upload fuzz crashers
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: fuzz-crashers
+        path: '**/testdata/fuzz/**'
+        if-no-files-found: ignore
 
   # notifies that all test jobs are finished.
   finish:
