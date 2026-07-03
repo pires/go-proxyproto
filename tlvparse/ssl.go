@@ -27,7 +27,7 @@ const (
 
 // PP2SSL represents the PP2_TYPE_SSL TLV and its subtypes.
 //
-// See section 2.2.5 of the PROXY protocol spec.
+// See section 2.2.6 of the PROXY protocol spec.
 /*
    struct pp2_tlv_ssl {
            uint8_t  client;
@@ -116,6 +116,47 @@ func (s PP2SSL) ClientCN() (string, bool) {
 	return "", false
 }
 
+// stringSubTLV returns the value of the first sub-TLV of the given type as a
+// string and whether that sub-TLV exists.
+func (s PP2SSL) stringSubTLV(typ proxyproto.PP2Type) (string, bool) {
+	for _, tlv := range s.TLV {
+		if tlv.Type == typ {
+			return string(tlv.Value), true
+		}
+	}
+	return "", false
+}
+
+// SSLSigAlg returns the US-ASCII string name of the algorithm used to sign the
+// certificate presented by the frontend (PP2_SUBTYPE_SSL_SIG_ALG), for example
+// "RSA-SHA256", and whether that extension exists.
+func (s PP2SSL) SSLSigAlg() (string, bool) {
+	return s.stringSubTLV(proxyproto.PP2_SUBTYPE_SSL_SIG_ALG)
+}
+
+// SSLKeyAlg returns the US-ASCII string name of the algorithm used to generate
+// the key of the certificate presented by the frontend
+// (PP2_SUBTYPE_SSL_KEY_ALG), for example "RSA2048", and whether that extension
+// exists.
+func (s PP2SSL) SSLKeyAlg() (string, bool) {
+	return s.stringSubTLV(proxyproto.PP2_SUBTYPE_SSL_KEY_ALG)
+}
+
+// SSLGroup returns the US-ASCII string name of the key exchange algorithm used
+// for the frontend TLS connection (PP2_SUBTYPE_SSL_GROUP), for example
+// "secp256r1", and whether that extension exists.
+func (s PP2SSL) SSLGroup() (string, bool) {
+	return s.stringSubTLV(proxyproto.PP2_SUBTYPE_SSL_GROUP)
+}
+
+// SSLSigScheme returns the US-ASCII string name of the algorithm the frontend
+// used to sign the ServerKeyExchange or CertificateVerify message
+// (PP2_SUBTYPE_SSL_SIG_SCHEME), for example "rsa_pss_rsae_sha256", and whether
+// that extension exists.
+func (s PP2SSL) SSLSigScheme() (string, bool) {
+	return s.stringSubTLV(proxyproto.PP2_SUBTYPE_SSL_SIG_SCHEME)
+}
+
 // ClientCert returns the raw X.509 client certificate encoded in ASN.1 DER and
 // whether that extension exists.
 func (s PP2SSL) ClientCert() ([]byte, bool) {
@@ -132,7 +173,7 @@ func IsSSL(t proxyproto.TLV) bool {
 	return t.Type == proxyproto.PP2_TYPE_SSL && len(t.Value) >= tlvSSLMinLen
 }
 
-// SSL returns the pp2_tlv_ssl from section 2.2.5 or errors with ErrIncompatibleTLV or ErrMalformedTLV.
+// SSL returns the pp2_tlv_ssl from section 2.2.6 or errors with ErrIncompatibleTLV or ErrMalformedTLV.
 func SSL(t proxyproto.TLV) (PP2SSL, error) {
 	ssl := PP2SSL{}
 	if !IsSSL(t) {
