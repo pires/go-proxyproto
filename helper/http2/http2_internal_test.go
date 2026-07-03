@@ -3,6 +3,7 @@ package http2
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"log"
@@ -297,3 +298,22 @@ func (e timeoutError) Error() string   { return e.err.Error() }
 func (e timeoutError) Unwrap() error   { return e.err }
 func (e timeoutError) Timeout() bool   { return true }
 func (e timeoutError) Temporary() bool { return true }
+
+// TestServeConnTLSHandshakeFailure pins the tls.Conn branch: a failed
+// handshake must close the connection and surface the error.
+func TestServeConnTLSHandshakeFailure(t *testing.T) {
+	srv := NewServer(&http.Server{ReadHeaderTimeout: 5 * time.Second}, nil)
+
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	go func() {
+		_, _ = clientConn.Write([]byte("this is not a TLS ClientHello"))
+		_ = clientConn.Close()
+	}()
+
+	if err := srv.serveConn(context.Background(), tls.Server(serverConn, &tls.Config{})); err == nil {
+		t.Fatal("expected TLS handshake error")
+	}
+}
