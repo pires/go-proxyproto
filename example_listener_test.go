@@ -1,6 +1,7 @@
 package proxyproto_test
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -12,12 +13,15 @@ const proxyV1Line = "PROXY TCP4 192.168.1.1 192.168.1.2 12345 443\r\n"
 
 func ExampleListener_default() {
 	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	// By default every connection must open with a PROXY header (DefaultPolicy
+	// is REQUIRE); RemoteAddr then reports the address the header carries.
 	pl := &proxyproto.Listener{Listener: l}
 	defer func() { _ = pl.Close() }()
 
 	go func() {
 		c, _ := net.Dial("tcp", pl.Addr().String())
 		if c != nil {
+			_, _ = c.Write([]byte(proxyV1Line))
 			_, _ = c.Write([]byte("x"))
 			_ = c.Close()
 		}
@@ -26,10 +30,14 @@ func ExampleListener_default() {
 	conn, _ := pl.Accept()
 	if conn != nil {
 		buf := make([]byte, 1)
-		_, _ = conn.Read(buf)
+		if _, err := conn.Read(buf); err != nil {
+			fmt.Println("read error:", err)
+			return
+		}
+		fmt.Println(conn.RemoteAddr())
 		_ = conn.Close()
 	}
-	// Output:
+	// Output: 192.168.1.1:12345
 }
 
 func ExampleListener_readHeaderTimeout() {
@@ -43,6 +51,7 @@ func ExampleListener_readHeaderTimeout() {
 	go func() {
 		c, _ := net.Dial("tcp", pl.Addr().String())
 		if c != nil {
+			_, _ = c.Write([]byte(proxyV1Line))
 			_, _ = c.Write([]byte("a"))
 			_ = c.Close()
 		}
@@ -69,6 +78,7 @@ func ExampleListener_readBufferSize() {
 	go func() {
 		c, _ := net.Dial("tcp", pl.Addr().String())
 		if c != nil {
+			_, _ = c.Write([]byte(proxyV1Line))
 			_, _ = c.Write([]byte("b"))
 			_ = c.Close()
 		}

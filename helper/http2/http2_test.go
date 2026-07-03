@@ -28,6 +28,12 @@ func ExampleServer() {
 
 	proxyLn := &proxyproto.Listener{
 		Listener: ln,
+		// This server accepts both proxied and non-proxied connections, so the
+		// PROXY header is optional. Restrict who may send one before exposing
+		// such a listener to untrusted clients (see proxyproto.DefaultPolicy).
+		ConnPolicy: func(proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
+			return proxyproto.USE, nil
+		},
 	}
 
 	server := h2proxy.NewServer(&http.Server{
@@ -243,7 +249,14 @@ func startTestServer(t *testing.T, server *http.Server, wrapListener func(net.Li
 	if wrapListener != nil {
 		serveLn = wrapListener(ln)
 	} else {
-		serveLn = &proxyproto.Listener{Listener: ln}
+		// The helper serves proxied and non-proxied connections alike, so the
+		// tests run the listener with an explicit optional-header policy.
+		serveLn = &proxyproto.Listener{
+			Listener: ln,
+			ConnPolicy: func(proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
+				return proxyproto.USE, nil
+			},
+		}
 	}
 
 	h2Server := h2proxy.NewServer(server, nil)
@@ -345,5 +358,60 @@ func testTLSConfig(t *testing.T) *tls.Config {
 		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{http2.NextProtoTLS},
+	}
+}
+
+// TestServer_h2c covers the cleartext HTTP/2 ALPN value: a PROXY header
+// advertising "h2c" must route the connection to the HTTP/2 server just like
+// "h2" does.
+func TestServer_h2c(t *testing.T) {
+	addr, server := newTestServer(t)
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("failed to close server: %v", err)
+		}
+	})
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("failed to close connection: %v", err)
+		}
+	}()
+
+	proxyHeader := proxyproto.Header{
+		Version:           2,
+		Command:           proxyproto.LOCAL,
+		TransportProtocol: proxyproto.UNSPEC,
+	}
+	if err := proxyHeader.SetTLVs([]proxyproto.TLV{{
+		Type:  proxyproto.PP2_TYPE_ALPN,
+		Value: []byte("h2c"),
+	}}); err != nil {
+		t.Fatalf("failed to set TLVs: %v", err)
+	}
+	if _, err := proxyHeader.WriteTo(conn); err != nil {
+		t.Fatalf("failed to write PROXY header: %v", err)
+	}
+
+	h2Conn, err := new(http2.Transport).NewClientConn(conn)
+	if err != nil {
+		t.Fatalf("failed to create HTTP connection: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://"+addr, nil)
+	if err != nil {
+		t.Fatalf("failed to create HTTP request: %v", err)
+	}
+
+	resp, err := h2Conn.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("failed to perform HTTP request: %v", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("failed to close response body: %v", err)
 	}
 }

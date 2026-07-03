@@ -13,7 +13,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -164,7 +166,9 @@ func expectClientOK(t *testing.T, ch <-chan error) {
 func TestPassthrough(t *testing.T) {
 	l := newLocalListener(t)
 
-	pl := &Listener{Listener: l}
+	// Header-optional pass-through is opt-in since DefaultPolicy became
+	// REQUIRE; this test pins the explicit USE mode.
+	pl := &Listener{Listener: l, ConnPolicy: usePolicy}
 
 	cliResult := runClient(t, clientConfig{
 		addr:       pl.Addr().String(),
@@ -218,12 +222,16 @@ func TestRequiredWithReadHeaderTimeout(t *testing.T) {
 			}
 			closeOnCleanup(t, "connection", conn)
 
-			// Read blocks forever if there is no ReadHeaderTimeout and the policy is not REQUIRE
+			// The silent client must make the first Read fail with
+			// ErrNoProxyProtocol once the header timeout elapses.
 			recv := make([]byte, 4)
 			_, err = conn.Read(recv)
 
-			if err != nil && !errors.Is(err, ErrNoProxyProtocol) && time.Since(start)-pl.ReadHeaderTimeout > 10*time.Millisecond {
-				t.Fatal("proxy proto should not be found and time should be close to read timeout")
+			if !errors.Is(err, ErrNoProxyProtocol) {
+				t.Fatalf("expected ErrNoProxyProtocol, got %v", err)
+			}
+			if elapsed := time.Since(start); elapsed < pl.ReadHeaderTimeout {
+				t.Fatalf("Read returned before the header timeout: %v < %v", elapsed, pl.ReadHeaderTimeout)
 			}
 			expectClientOK(t, cliResult)
 		})
@@ -262,12 +270,17 @@ func TestUseWithReadHeaderTimeout(t *testing.T) {
 				t.Fatalf("err: %v", err)
 			}
 
-			// Read blocks forever if there is no ReadHeaderTimeout
+			// Under USE, timeout-without-header falls through to a raw read of
+			// the silent connection, which then hits the conn deadline set above.
 			recv := make([]byte, 4)
 			_, err = conn.Read(recv)
 
-			if err != nil && !errors.Is(err, ErrNoProxyProtocol) && (time.Since(start)-(pl.ReadHeaderTimeout*2)) > 10*time.Millisecond {
-				t.Fatal("proxy proto should not be found and time should be close to read timeout")
+			var netErr net.Error
+			if !errors.As(err, &netErr) || !netErr.Timeout() {
+				t.Fatalf("expected the raw read to hit the connection deadline, got %v", err)
+			}
+			if elapsed := time.Since(start); elapsed < pl.ReadHeaderTimeout {
+				t.Fatalf("Read returned before the header timeout: %v < %v", elapsed, pl.ReadHeaderTimeout)
 			}
 			expectClientOK(t, cliResult)
 		})
@@ -493,7 +506,7 @@ func TestWithBufferSizePositive(t *testing.T) {
 		_ = peer.Close()
 	})
 
-	proxyConn := NewConn(conn, WithBufferSize(4096))
+	proxyConn := NewConn(conn, WithPolicy(USE), WithBufferSize(4096))
 	if proxyConn.bufferSize == nil {
 		t.Fatalf("expected bufferSize to be set")
 	}
@@ -520,7 +533,7 @@ func TestWithBufferSizeZeroOrNegative(t *testing.T) {
 				_ = peer.Close()
 			})
 
-			proxyConn := NewConn(conn, WithBufferSize(length))
+			proxyConn := NewConn(conn, WithPolicy(USE), WithBufferSize(length))
 			if proxyConn.bufferSize != nil {
 				t.Fatalf("expected bufferSize to be nil for length %d", length)
 			}
@@ -656,7 +669,7 @@ func TestDeadlineSettersAfterHeaderProcessed(t *testing.T) {
 	closeOnCleanup(t, "connection", conn)
 	closeOnCleanup(t, "peer connection", peer)
 
-	proxyConn := NewConn(conn)
+	proxyConn := NewConn(conn, WithPolicy(USE))
 
 	// Ensure header processing completes by sending a non-PROXY byte
 	// and reading it through the proxy connection.
@@ -805,12 +818,17 @@ func TestAcceptDoesNotMutateListenerReadHeaderTimeout(t *testing.T) {
 // We expect the actual address and port to be returned,
 // rather than the ProxyHeader we defined.
 func TestReadHeaderTimeoutIsEmpty(t *testing.T) {
+	orig := DefaultReadHeaderTimeout
 	DefaultReadHeaderTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { DefaultReadHeaderTimeout = orig })
 
 	l := newLocalListener(t)
 
+	// The timeout-means-no-header fallback only passes traffic through under
+	// an optional-header policy; make that explicit.
 	pl := &Listener{
-		Listener: l,
+		Listener:   l,
+		ConnPolicy: usePolicy,
 	}
 
 	header := testTCPv4Header()
@@ -1038,7 +1056,9 @@ func TestParse_unixStream(t *testing.T) {
 	expectClientOK(t, cliResult)
 }
 
-func TestParse_unixDatagram(t *testing.T) {
+// TestParse_unixDatagramHeaderOverStream parses a unixgram-family v2 header
+// carried over a stream pipe; no datagram socket is involved.
+func TestParse_unixDatagramHeaderOverStream(t *testing.T) {
 	server, client := net.Pipe()
 	closeOnCleanup(t, "client", client)
 	closeOnCleanup(t, "server", server)
@@ -1188,7 +1208,7 @@ func TestPanicIfPolicyAndConnPolicySet(t *testing.T) {
 	runClient(t, clientConfig{addr: pl.Addr().String(), connectOnly: true})
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("accept did panic as expected with error, %v", r)
+			t.Logf("accept did panic as expected: %v", r)
 		}
 	}()
 	conn, err := pl.Accept()
@@ -1307,6 +1327,11 @@ func TestIgnorePolicyIgnoresIpFromProxyHeader(t *testing.T) {
 	if addr.IP.String() != "127.0.0.1" {
 		t.Fatalf("bad: %v", addr)
 	}
+	// The header is consumed but must not be exposed under IGNORE: TLV and
+	// address consumers see no proxy information at all.
+	if h := conn.(*Conn).ProxyHeader(); h != nil {
+		t.Fatalf("IGNORE must not expose the parsed header, got %+v", h)
+	}
 	expectClientOK(t, cliResult)
 }
 
@@ -1336,53 +1361,40 @@ func Test_AllOptionsAreRecognized(t *testing.T) {
 	closeOnCleanup(t, "connection", c)
 }
 
-func TestReadingIsRefusedOnErrorWhenRemoteAddrRequestedFirst(t *testing.T) {
-	l := newLocalListener(t)
+// TestReadingIsRefusedOnErrorWhenAddrRequestedFirst pins that poking either
+// address accessor before the first Read (which runs header processing under
+// the hood) does not swallow the header error the Read must surface.
+func TestReadingIsRefusedOnErrorWhenAddrRequestedFirst(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		poke func(net.Conn)
+	}{
+		{"RemoteAddr first", func(c net.Conn) { _ = c.RemoteAddr() }},
+		{"LocalAddr first", func(c net.Conn) { _ = c.LocalAddr() }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := newLocalListener(t)
+			pl := &Listener{Listener: l, Policy: func(_ net.Addr) (Policy, error) { return REQUIRE, nil }}
 
-	policyFunc := func(_ net.Addr) (Policy, error) { return REQUIRE, nil }
+			cliResult := runClient(t, clientConfig{addr: pl.Addr().String()})
 
-	pl := &Listener{Listener: l, Policy: policyFunc}
+			conn, err := pl.Accept()
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			closeOnCleanup(t, "connection", conn)
 
-	cliResult := runClient(t, clientConfig{addr: pl.Addr().String()})
-
-	conn, err := pl.Accept()
-	if err != nil {
-		t.Fatalf("err: %v", err)
+			tc.poke(conn)
+			recv := make([]byte, 4)
+			if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
+				t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
+			}
+			expectClientOK(t, cliResult)
+		})
 	}
-	closeOnCleanup(t, "connection", conn)
-
-	_ = conn.RemoteAddr()
-	recv := make([]byte, 4)
-	if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
-		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
-	}
-	expectClientOK(t, cliResult)
 }
 
-func TestReadingIsRefusedOnErrorWhenLocalAddrRequestedFirst(t *testing.T) {
-	l := newLocalListener(t)
-
-	policyFunc := func(_ net.Addr) (Policy, error) { return REQUIRE, nil }
-
-	pl := &Listener{Listener: l, Policy: policyFunc}
-
-	cliResult := runClient(t, clientConfig{addr: pl.Addr().String()})
-
-	conn, err := pl.Accept()
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	closeOnCleanup(t, "connection", conn)
-
-	_ = conn.LocalAddr()
-	recv := make([]byte, 4)
-	if _, err = conn.Read(recv); err != ErrNoProxyProtocol {
-		t.Fatalf("Expected error %v, received %v", ErrNoProxyProtocol, err)
-	}
-	expectClientOK(t, cliResult)
-}
-
-func TestSkipProxyProtocolPolicy(t *testing.T) {
+func TestSkipProxyProtocolConnPolicy(t *testing.T) {
 	l := newLocalListener(t)
 
 	connPolicyFunc := func(_ ConnPolicyOptions) (Policy, error) { return SKIP, nil }
@@ -1418,7 +1430,7 @@ func TestSkipProxyProtocolPolicy(t *testing.T) {
 	expectClientOK(t, cliResult)
 }
 
-func TestSkipProxyProtocolConnPolicy(t *testing.T) {
+func TestSkipProxyProtocolPolicy(t *testing.T) {
 	l := newLocalListener(t)
 
 	policyFunc := func(_ net.Addr) (Policy, error) { return SKIP, nil }
@@ -1605,18 +1617,19 @@ func Test_ConnectionHandlesInvalidUpstreamError(t *testing.T) {
 		if connectionCounter.Load() >= 1 {
 			break
 		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	if connectionCounter.Load() < 1 {
 		t.Fatalf("expected ConnPolicy to be called at least once")
 	}
 
-	// Wait a few seconds to ensure we didn't get anything back on our channel.
+	// Ensure nothing came back on the channel: the listener must still be up.
 	select {
 	case err := <-errCh:
 		if err != nil {
 			t.Fatalf("invalid upstream shouldn't return an error: %v", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(500 * time.Millisecond):
 		// No error returned (as expected, we're still listening though)
 	}
 
@@ -2007,7 +2020,7 @@ func (c *testConn) SetReadDeadline(time.Time) error { return nil }
 
 func TestCopyToWrappedConnection(t *testing.T) {
 	innerConn := &testConn{}
-	wrappedConn := NewConn(innerConn)
+	wrappedConn := NewConn(innerConn, WithPolicy(USE))
 	dummySrc := &testConn{reads: 1}
 
 	if _, err := io.Copy(wrappedConn, dummySrc); err != nil {
@@ -2019,7 +2032,7 @@ func TestCopyToWrappedConnection(t *testing.T) {
 }
 
 func TestCopyFromWrappedConnection(t *testing.T) {
-	wrappedConn := NewConn(&testConn{reads: 1})
+	wrappedConn := NewConn(&testConn{reads: 1}, WithPolicy(USE))
 	dummyDst := &testConn{}
 
 	if _, err := io.Copy(dummyDst, wrappedConn); err != nil {
@@ -2032,9 +2045,9 @@ func TestCopyFromWrappedConnection(t *testing.T) {
 
 func TestCopyFromWrappedConnectionToWrappedConnection(t *testing.T) {
 	innerConn1 := &testConn{reads: 1}
-	wrappedConn1 := NewConn(innerConn1)
+	wrappedConn1 := NewConn(innerConn1, WithPolicy(USE))
 	innerConn2 := &testConn{}
-	wrappedConn2 := NewConn(innerConn2)
+	wrappedConn2 := NewConn(innerConn2, WithPolicy(USE))
 
 	if _, err := io.Copy(wrappedConn1, wrappedConn2); err != nil {
 		t.Fatalf("err: %v", err)
@@ -2076,7 +2089,7 @@ func TestDeadlineWrappersDelegate(t *testing.T) {
 
 func TestReadFromFallbackCopiesToConn(t *testing.T) {
 	conn := &noReadFromConn{}
-	proxyConn := NewConn(conn)
+	proxyConn := NewConn(conn, WithPolicy(USE))
 
 	payload := []byte("payload")
 	if _, err := proxyConn.ReadFrom(bytes.NewReader(payload)); err != nil {
@@ -2222,7 +2235,7 @@ func TestReadUsesConnWhenBufReaderNil(t *testing.T) {
 		}
 	})
 
-	proxyConn := NewConn(serverConn)
+	proxyConn := NewConn(serverConn, WithPolicy(USE))
 	sendSecond := make(chan struct{})
 
 	go func() {
@@ -2264,7 +2277,7 @@ func TestWriteToUsesConnWhenBufReaderNil(t *testing.T) {
 		}
 	})
 
-	proxyConn := NewConn(serverConn)
+	proxyConn := NewConn(serverConn, WithPolicy(USE))
 	sendPayload := make(chan struct{})
 
 	go func() {
@@ -2498,3 +2511,353 @@ y2ptGsuSmgUtWj3NM9xuwYPm+Z/F84K6+ARYiZ6PYj013sovGKUFfYAqVXVlxtIX
 qyUBnu3X9ps8ZfjLZO7BAkEAlT4R5Yl6cGhaJQYZHOde3JEMhNRcVFMO8dJDaFeo
 f9Oeos0UUothgiDktdQHxdNEwLjQf7lJJBzV+5OtwswCWA==
 -----END RSA PRIVATE KEY-----`)
+
+// TestConnWritePathsSurfaceHeaderError pins that Write, ReadFrom and WriteTo
+// surface a header-processing failure the same way Read does: the REQUIRE
+// policy with no header on the wire must fail every I/O entry point.
+func TestConnWritePathsSurfaceHeaderError(t *testing.T) {
+	newFailingConn := func(t *testing.T) *Conn {
+		t.Helper()
+		conn, peer := net.Pipe()
+		t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+		// Non-PROXY bytes on the wire: header detection finds no signature and
+		// the REQUIRE policy must fail every I/O entry point.
+		go func() { _, _ = peer.Write([]byte("GET / HTTP/1.1\r\n")) }()
+		return NewConn(conn, WithPolicy(REQUIRE))
+	}
+
+	t.Run("Write", func(t *testing.T) {
+		c := newFailingConn(t)
+		if _, err := c.Write([]byte("hello")); !errors.Is(err, ErrNoProxyProtocol) {
+			t.Fatalf("expected ErrNoProxyProtocol, got %v", err)
+		}
+	})
+	t.Run("ReadFrom", func(t *testing.T) {
+		c := newFailingConn(t)
+		if _, err := c.ReadFrom(strings.NewReader("hello")); !errors.Is(err, ErrNoProxyProtocol) {
+			t.Fatalf("expected ErrNoProxyProtocol, got %v", err)
+		}
+	})
+	t.Run("WriteTo", func(t *testing.T) {
+		c := newFailingConn(t)
+		if _, err := c.WriteTo(io.Discard); !errors.Is(err, ErrNoProxyProtocol) {
+			t.Fatalf("expected ErrNoProxyProtocol, got %v", err)
+		}
+	})
+}
+
+// TestAcceptSurvivesPolicyAddrError is the S3 regression test: a listener
+// whose peer addresses cannot be classified as IPs (a Unix socket) combined
+// with an address-based policy must drop each such connection and keep
+// accepting, not return an error that would stop a typical accept loop.
+func TestAcceptSurvivesPolicyAddrError(t *testing.T) {
+	// Not t.TempDir(): it embeds the full test name and can exceed the OS limit
+	// on Unix socket path length (104 bytes on macOS).
+	dir, err := os.MkdirTemp("", "pp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "s.sock")
+	ln, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pl := &Listener{
+		Listener:   ln,
+		ConnPolicy: TrustProxyHeaderFrom(net.ParseIP("10.0.0.1")),
+	}
+	acceptErr := make(chan error, 1)
+	go func() {
+		_, err := pl.Accept()
+		acceptErr <- err
+	}()
+
+	// Every connection on a Unix socket fails IP classification; each must be
+	// closed by Accept without Accept returning.
+	for range 2 {
+		conn, err := net.Dial("unix", socket)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The listener closes the connection; a read observing EOF proves it was
+		// handled (dropped) rather than left pending.
+		buf := make([]byte, 1)
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, err := conn.Read(buf); err != io.EOF {
+			t.Fatalf("expected connection to be closed by the listener, got %v", err)
+		}
+		_ = conn.Close()
+	}
+
+	select {
+	case err := <-acceptErr:
+		t.Fatalf("Accept stopped on a policy address error: %v", err)
+	default:
+	}
+
+	// Accept must still be alive, blocked waiting for the next connection.
+	if err := pl.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-acceptErr; err == nil {
+		t.Fatal("expected Accept to return the listener-closed error")
+	}
+}
+
+// limitedFailWriter accepts a fixed number of Write calls, then fails.
+type limitedFailWriter struct {
+	allowed int
+	written bytes.Buffer
+}
+
+var errFailWriter = errors.New("writer failed")
+
+func (w *limitedFailWriter) Write(p []byte) (int, error) {
+	if w.allowed <= 0 {
+		return 0, errFailWriter
+	}
+	w.allowed--
+	return w.written.Write(p)
+}
+
+// TestConnWriteToPropagatesWriterErrors pins error propagation from the
+// destination writer on both WriteTo stages: flushing the buffered payload and
+// streaming the rest of the connection.
+func TestConnWriteToPropagatesWriterErrors(t *testing.T) {
+	t.Run("buffered flush fails", func(t *testing.T) {
+		conn, peer := net.Pipe()
+		t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+		go func() {
+			_, _ = peer.Write([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 80 443\r\nPAYLOAD"))
+		}()
+
+		w := &limitedFailWriter{allowed: 0}
+		if _, err := NewConn(conn).WriteTo(w); !errors.Is(err, errFailWriter) {
+			t.Fatalf("expected errFailWriter, got %v", err)
+		}
+	})
+
+	t.Run("streaming copy fails", func(t *testing.T) {
+		conn, peer := net.Pipe()
+		t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+		go func() {
+			// First write carries the header plus a buffered chunk (consumes the
+			// writer's single allowed call), the second arrives via io.Copy.
+			_, _ = peer.Write([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 80 443\r\nAB"))
+			_, _ = peer.Write([]byte("CD"))
+		}()
+
+		w := &limitedFailWriter{allowed: 1}
+		if _, err := NewConn(conn).WriteTo(w); !errors.Is(err, errFailWriter) {
+			t.Fatalf("expected errFailWriter, got %v", err)
+		}
+		if w.written.String() != "AB" {
+			t.Fatalf("buffered flush wrote %q, want \"AB\"", w.written.String())
+		}
+	})
+}
+
+// TestReadHeaderDeadlineSetError pins that a failure to arm the header-read
+// deadline (e.g. the connection is already closed) is surfaced instead of
+// silently proceeding without the DoS bound.
+func TestReadHeaderDeadlineSetError(t *testing.T) {
+	conn, peer := net.Pipe()
+	_ = peer.Close()
+	_ = conn.Close() // SetReadDeadline on a closed pipe fails
+
+	c := NewConn(conn)
+	if _, err := c.Read(make([]byte, 1)); err == nil {
+		t.Fatal("expected an error when the deadline cannot be set")
+	}
+}
+
+// usePolicy is the explicit optional-header policy used by tests that pin the
+// historical pass-through behavior.
+func usePolicy(ConnPolicyOptions) (Policy, error) { return USE, nil }
+
+// TestDefaultPolicyRequiresHeader pins the spec-conformant default (the
+// receiver "MUST not try to guess whether the protocol header is present or
+// not"): with nothing configured, a connection that does not open with a
+// PROXY header fails its first Read with ErrNoProxyProtocol, for NewConn and
+// Listener alike. Setting DefaultPolicy = USE restores the historical
+// optional-header behavior.
+func TestDefaultPolicyRequiresHeader(t *testing.T) {
+	t.Run("NewConn requires a header", func(t *testing.T) {
+		conn, peer := net.Pipe()
+		t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+		go func() { _, _ = peer.Write([]byte("GET / HTTP/1.1\r\n")) }()
+
+		if _, err := NewConn(conn).Read(make([]byte, 1)); !errors.Is(err, ErrNoProxyProtocol) {
+			t.Fatalf("expected ErrNoProxyProtocol, got %v", err)
+		}
+	})
+
+	t.Run("Listener requires a header", func(t *testing.T) {
+		pl := &Listener{Listener: newLocalListener(t)}
+		go func() {
+			conn, err := net.Dial("tcp", pl.Addr().String())
+			if err != nil {
+				return
+			}
+			_, _ = conn.Write([]byte("GET / HTTP/1.1\r\n"))
+		}()
+
+		conn, err := pl.Accept()
+		if err != nil {
+			t.Fatalf("accept failed: %v", err)
+		}
+		closeOnCleanup(t, "connection", conn)
+		if _, err := conn.Read(make([]byte, 1)); !errors.Is(err, ErrNoProxyProtocol) {
+			t.Fatalf("expected ErrNoProxyProtocol, got %v", err)
+		}
+	})
+
+	t.Run("DefaultPolicy USE restores pass-through", func(t *testing.T) {
+		DefaultPolicy = USE
+		defer func() { DefaultPolicy = REQUIRE }()
+
+		conn, peer := net.Pipe()
+		t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+		go func() { _, _ = peer.Write([]byte("x")) }()
+
+		buf := make([]byte, 1)
+		if _, err := NewConn(conn).Read(buf); err != nil || buf[0] != 'x' {
+			t.Fatalf("expected raw pass-through, got (%q, %v)", buf, err)
+		}
+	})
+}
+
+// TestRejectPolicyAllowsHeaderlessConnection pins the REJECT semantics: REJECT
+// refuses connections that DO send a PROXY header, but a connection without
+// one is served as a raw connection. (Dropping untrusted connections outright
+// is TrustProxyHeaderFrom's job, via an ErrInvalidUpstream error.)
+func TestRejectPolicyAllowsHeaderlessConnection(t *testing.T) {
+	conn, peer := net.Pipe()
+	t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+	go func() { _, _ = peer.Write([]byte("raw")) }()
+
+	c := NewConn(conn, WithPolicy(REJECT))
+	buf := make([]byte, 3)
+	if _, err := io.ReadFull(c, buf); err != nil {
+		t.Fatalf("headerless connection under REJECT must pass through, got %v", err)
+	}
+	if string(buf) != "raw" {
+		t.Fatalf("expected raw payload, got %q", buf)
+	}
+	if h := c.ProxyHeader(); h != nil {
+		t.Fatalf("expected no header, got %+v", h)
+	}
+}
+
+// TestNewConnSkipPolicyConsumesHeaderWithoutUsing pins SKIP semantics on a
+// Conn (as opposed to a Listener, where SKIP returns the raw connection): a
+// present header is consumed from the stream but discarded — not exposed, not
+// validated, and the socket addresses are unaffected.
+func TestNewConnSkipPolicyConsumesHeaderWithoutUsing(t *testing.T) {
+	conn, peer := net.Pipe()
+	t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+	go func() {
+		_, _ = testTCPv4Header().WriteTo(peer)
+		_, _ = peer.Write([]byte("ping"))
+	}()
+
+	c := NewConn(conn, WithPolicy(SKIP))
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(c, buf); err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if string(buf) != "ping" {
+		t.Fatalf("expected the payload after the consumed header, got %q", buf)
+	}
+	if h := c.ProxyHeader(); h != nil {
+		t.Fatalf("SKIP must not expose the parsed header, got %+v", h)
+	}
+	if c.RemoteAddr().String() != conn.RemoteAddr().String() {
+		t.Fatalf("SKIP must keep the socket remote address, got %v", c.RemoteAddr())
+	}
+}
+
+// TestWithBufferSizeTooSmallForV1Header pins the interaction documented on
+// WithBufferSize: v1 parsing requires the whole line buffered from a single
+// read, so a buffer smaller than the line rejects even a well-behaved v1
+// sender. (v2 refills freely and is unaffected.)
+func TestWithBufferSizeTooSmallForV1Header(t *testing.T) {
+	conn, peer := net.Pipe()
+	t.Cleanup(func() { _ = conn.Close(); _ = peer.Close() })
+	go func() {
+		// 40-byte v1 line sent atomically; only 16 bytes fit in the buffer.
+		_, _ = peer.Write([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 80 443\r\nping"))
+	}()
+
+	c := NewConn(conn, WithPolicy(REQUIRE), WithBufferSize(16))
+	if _, err := c.Read(make([]byte, 4)); !errors.Is(err, ErrCantReadVersion1Header) {
+		t.Fatalf("expected ErrCantReadVersion1Header with an undersized buffer, got %v", err)
+	}
+}
+
+// TestTrustProxyHeaderFromListener pins the S1 posture end to end on a real
+// listener: a trusted peer must send a header (its absence errors instead of
+// being guessed around), and an untrusted peer is dropped by Accept without
+// stopping the listener.
+func TestTrustProxyHeaderFromListener(t *testing.T) {
+	t.Run("trusted peer must send a header", func(t *testing.T) {
+		pl := &Listener{
+			Listener:   newLocalListener(t),
+			ConnPolicy: TrustProxyHeaderFrom(net.ParseIP("127.0.0.1")),
+		}
+		go func() {
+			c, err := net.Dial("tcp", pl.Addr().String())
+			if err != nil {
+				return
+			}
+			_, _ = c.Write([]byte("raw bytes, no header"))
+		}()
+
+		conn, err := pl.Accept()
+		if err != nil {
+			t.Fatalf("accept: %v", err)
+		}
+		closeOnCleanup(t, "connection", conn)
+		if _, err := conn.Read(make([]byte, 1)); !errors.Is(err, ErrNoProxyProtocol) {
+			t.Fatalf("expected ErrNoProxyProtocol for a headerless trusted peer, got %v", err)
+		}
+	})
+
+	t.Run("untrusted peer is dropped, listener survives", func(t *testing.T) {
+		pl := &Listener{
+			Listener:   newLocalListener(t),
+			ConnPolicy: TrustProxyHeaderFrom(net.ParseIP("203.0.113.9")),
+		}
+		acceptErr := make(chan error, 1)
+		go func() {
+			_, err := pl.Accept()
+			acceptErr <- err
+		}()
+
+		c, err := net.Dial("tcp", pl.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The listener closes the connection; observing EOF proves it was
+		// dropped rather than served.
+		_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, err := c.Read(make([]byte, 1)); err != io.EOF {
+			t.Fatalf("expected the untrusted connection to be closed, got %v", err)
+		}
+		_ = c.Close()
+
+		select {
+		case err := <-acceptErr:
+			t.Fatalf("Accept stopped on an untrusted peer: %v", err)
+		default:
+		}
+		if err := pl.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-acceptErr; err == nil {
+			t.Fatal("expected Accept to return the listener-closed error")
+		}
+	})
+}
