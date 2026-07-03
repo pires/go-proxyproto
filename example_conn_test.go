@@ -1,6 +1,7 @@
 package proxyproto_test
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -13,19 +14,24 @@ func ExampleNewConn_default() {
 	defer func() { _ = clientConn.Close() }()
 
 	go func() {
+		_, _ = clientConn.Write([]byte(proxyV1Line))
 		_, _ = clientConn.Write([]byte("x"))
 		_ = clientConn.Close()
 	}()
 
-	// NewConn applies DefaultReadHeaderTimeout while detecting the PROXY header,
-	// so a silent client cannot make header detection block forever. This bounds
-	// detection only; under the default policy a subsequent Read still reads the
-	// raw connection. Use the REQUIRE policy or set a read deadline to bound the
-	// first Read end-to-end.
+	// By default a connection must open with a PROXY header (DefaultPolicy is
+	// REQUIRE): a headerless connection fails its first Read with
+	// ErrNoProxyProtocol. Detection is bounded by DefaultReadHeaderTimeout, so
+	// a silent client cannot block it forever. RemoteAddr then reports the
+	// client address carried by the header.
 	conn := proxyproto.NewConn(serverConn)
 	buf := make([]byte, 1)
-	_, _ = conn.Read(buf)
-	// Output:
+	if _, err := conn.Read(buf); err != nil {
+		fmt.Println("read error:", err)
+		return
+	}
+	fmt.Println(conn.RemoteAddr())
+	// Output: 192.168.1.1:12345
 }
 
 func ExampleNewConn_disableReadHeaderTimeout() {
@@ -34,6 +40,7 @@ func ExampleNewConn_disableReadHeaderTimeout() {
 	defer func() { _ = clientConn.Close() }()
 
 	go func() {
+		_, _ = clientConn.Write([]byte(proxyV1Line))
 		_, _ = clientConn.Write([]byte("d"))
 		_ = clientConn.Close()
 	}()
@@ -52,6 +59,7 @@ func ExampleNewConn_withBufferSize() {
 	defer func() { _ = clientConn.Close() }()
 
 	go func() {
+		_, _ = clientConn.Write([]byte(proxyV1Line))
 		_, _ = clientConn.Write([]byte("y"))
 		_ = clientConn.Close()
 	}()
@@ -68,6 +76,7 @@ func ExampleNewConn_withReadHeaderTimeout() {
 	defer func() { _ = clientConn.Close() }()
 
 	go func() {
+		_, _ = clientConn.Write([]byte(proxyV1Line))
 		_, _ = clientConn.Write([]byte("z"))
 		_ = clientConn.Close()
 	}()
@@ -101,6 +110,7 @@ func ExampleNewConn_combined() {
 	defer func() { _ = clientConn.Close() }()
 
 	go func() {
+		_, _ = clientConn.Write([]byte(proxyV1Line))
 		_, _ = clientConn.Write([]byte("c"))
 		_ = clientConn.Close()
 	}()

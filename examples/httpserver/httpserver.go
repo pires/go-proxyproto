@@ -35,6 +35,14 @@ func main() {
 	proxyListener := &proxyproto.Listener{
 		Listener:          ln,
 		ReadHeaderTimeout: 10 * time.Second,
+		// This example accepts both proxied and direct connections (e.g. curl
+		// against :8080), so the PROXY header is optional. The default policy
+		// (REQUIRE) would reject direct connections. Do not expose an
+		// optional-header listener to untrusted clients without restricting who
+		// may send a header; see the Security section of the README.
+		ConnPolicy: func(proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
+			return proxyproto.USE, nil
+		},
 	}
 	defer func() {
 		if err := proxyListener.Close(); err != nil {
