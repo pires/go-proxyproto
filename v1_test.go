@@ -104,6 +104,162 @@ var invalidParseV1Tests = []struct {
 		reader:        newBufioReader([]byte("PROXY UNKNOWN " + IPv6LongAddressesAndPorts + " " + crlf)),
 		expectedError: ErrVersion1HeaderTooLong,
 	},
+	{
+		desc:          "TCP4 with signed port",
+		reader:        newBufioReader([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 +80 443" + crlf)),
+		expectedError: ErrInvalidPortNumber,
+	},
+	{
+		desc:          "TCP4 with leading-zero port",
+		reader:        newBufioReader([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 080 443" + crlf)),
+		expectedError: ErrInvalidPortNumber,
+	},
+	{
+		desc:          "TCP4 with empty port token",
+		reader:        newBufioReader([]byte("PROXY TCP4 1.2.3.4 5.6.7.8  443" + crlf)),
+		expectedError: ErrInvalidPortNumber,
+	},
+	{
+		desc:          "TCP4 with trailing token",
+		reader:        newBufioReader([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 80 443 extra" + crlf)),
+		expectedError: ErrCantReadAddressFamilyAndProtocol,
+	},
+	// The signature dispatch in Read only peeks the first 5 bytes, so the parser
+	// itself must reject a first token that is not exactly "PROXY".
+	{
+		desc:          "signature with trailing garbage",
+		reader:        newBufioReader([]byte("PROXYjunk TCP4 1.2.3.4 5.6.7.8 80 443" + crlf)),
+		expectedError: ErrCantReadVersion1Header,
+	},
+	{
+		desc:          "signature glued to protocol",
+		reader:        newBufioReader([]byte("PROXYTCP4 1.2.3.4 5.6.7.8 80 443" + crlf)),
+		expectedError: ErrCantReadVersion1Header,
+	},
+	// The spec's address grammar has no zone identifiers; netip would accept
+	// and silently strip them, forwarding an address the sender never wrote.
+	{
+		desc:          "TCP6 with zoned source address",
+		reader:        newBufioReader([]byte("PROXY TCP6 fe80::1%eth0 fe80::2 80 443" + crlf)),
+		expectedError: ErrInvalidAddress,
+	},
+	{
+		desc:          "TCP6 with zoned destination address",
+		reader:        newBufioReader([]byte("PROXY TCP6 fe80::1 fe80::2%eth0 80 443" + crlf)),
+		expectedError: ErrInvalidAddress,
+	},
+	// Spec: "Heading zeroes are not permitted in front of numbers in order to
+	// avoid any possible confusion with octal numbers." netip enforces this
+	// today; the case is pinned so a stdlib change cannot silently loosen it.
+	{
+		desc:          "TCP4 with leading-zero octet",
+		reader:        newBufioReader([]byte("PROXY TCP4 01.2.3.4 5.6.7.8 80 443" + crlf)),
+		expectedError: ErrInvalidAddress,
+	},
+	// Spec: "the advertised protocol family dictates what format to use", so a
+	// plain IPv4 literal in a TCP6 line is rejected unless the
+	// V1AcceptIPv4InTCP6 compatibility mode is enabled.
+	{
+		desc:          "TCP6 with plain IPv4 addresses",
+		reader:        bufio.NewReader(strings.NewReader(fixtureTCP6IPv4SrcIPv4Dst)),
+		expectedError: ErrInvalidAddress,
+	},
+	{
+		desc:          "TCP6 with plain IPv4 destination",
+		reader:        bufio.NewReader(strings.NewReader(fixtureTCP6IPv6SrcIPv4Dst)),
+		expectedError: ErrInvalidAddress,
+	},
+}
+
+// TestParseV1IPv4InTCP6Compat pins the V1AcceptIPv4InTCP6 compatibility mode:
+// plain IPv4 literals in TCP6 lines (as emitted by e.g. the nginx OSS stream
+// module) parse as v4-mapped IPv6 addresses and serialize in ::ffff: form.
+func TestParseV1IPv4InTCP6Compat(t *testing.T) {
+	V1AcceptIPv4InTCP6 = true
+	defer func() { V1AcceptIPv4InTCP6 = false }()
+
+	cases := []struct {
+		desc           string
+		line           string
+		expectedHeader *Header
+		expectedWrite  string
+	}{
+		{
+			desc: "TCP6 IPv4 src IPv4 dst",
+			line: fixtureTCP6IPv4SrcIPv4Dst,
+			expectedHeader: &Header{
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv6,
+				SourceAddr:        &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 1234},
+				DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("192.0.2.2").To16(), Port: 5678},
+			},
+			// Both addresses are v4-mapped, so both must serialize in ::ffff: form.
+			expectedWrite: "PROXY TCP6 ::ffff:192.0.2.1 ::ffff:192.0.2.2 1234 5678" + crlf,
+		},
+		{
+			desc: "TCP6 IPv6 src IPv4 dst",
+			line: fixtureTCP6IPv6SrcIPv4Dst,
+			expectedHeader: &Header{
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv6,
+				SourceAddr:        &net.TCPAddr{IP: net.ParseIP("2001:db8::1").To16(), Port: 51512},
+				DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 22},
+			},
+			// Mixed family: genuine IPv6 source stays as-is, v4 dest becomes v4-mapped.
+			expectedWrite: "PROXY TCP6 2001:db8::1 ::ffff:192.0.2.1 51512 22" + crlf,
+		},
+		{
+			desc: "TCP6 IPv4 src IPv6 dst",
+			line: fixtureTCP6IPv4SrcIPv6Dst,
+			expectedHeader: &Header{
+				Version:           1,
+				Command:           PROXY,
+				TransportProtocol: TCPv6,
+				SourceAddr:        &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 51512},
+				DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("2001:db8::1").To16(), Port: 22},
+			},
+			// Mixed family: v4 source becomes v4-mapped, genuine IPv6 dest stays as-is.
+			expectedWrite: "PROXY TCP6 ::ffff:192.0.2.1 2001:db8::1 51512 22" + crlf,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.desc, func(t *testing.T) {
+			header, err := Read(bufio.NewReader(strings.NewReader(tt.line)))
+			if err != nil {
+				t.Fatal("unexpected error", err.Error())
+			}
+			if !header.EqualsTo(tt.expectedHeader) {
+				t.Fatalf("expected %#v, actual %#v", tt.expectedHeader, header)
+			}
+			got, err := header.Format()
+			if err != nil {
+				t.Fatal("unexpected error", err.Error())
+			}
+			if string(got) != tt.expectedWrite {
+				t.Fatalf("expected wire %q, actual %q", tt.expectedWrite, got)
+			}
+		})
+	}
+}
+
+// TestFormatV1InvalidPorts pins the format-side port validation: the spec
+// requires ports in the decimal range 0..65535, and a hand-built header must
+// not serialize values outside it.
+func TestFormatV1InvalidPorts(t *testing.T) {
+	for _, port := range []int{-1, 65536, 700000} {
+		header := &Header{
+			Version:           1,
+			Command:           PROXY,
+			TransportProtocol: TCPv4,
+			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("10.1.1.1"), Port: port},
+			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("20.2.2.2"), Port: 443},
+		}
+		if _, err := header.Format(); !errors.Is(err, ErrInvalidPortNumber) {
+			t.Fatalf("port %d: expected ErrInvalidPortNumber, got %v", port, err)
+		}
+	}
 }
 
 func TestReadV1Invalid(t *testing.T) {
@@ -191,45 +347,8 @@ var validParseAndWriteV1Tests = []struct {
 		// UNSPEC always serializes to the short form; addresses are dropped.
 		expectedWrite: "PROXY UNKNOWN" + crlf,
 	},
-	{
-		desc:   "TCP6 IPv4 src IPv4 dst",
-		reader: bufio.NewReader(strings.NewReader(fixtureTCP6IPv4SrcIPv4Dst)),
-		expectedHeader: &Header{
-			Version:           1,
-			Command:           PROXY,
-			TransportProtocol: TCPv6,
-			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 1234},
-			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("192.0.2.2").To16(), Port: 5678},
-		},
-		// Both addresses are v4-mapped, so both must serialize in ::ffff: form.
-		expectedWrite: "PROXY TCP6 ::ffff:192.0.2.1 ::ffff:192.0.2.2 1234 5678" + crlf,
-	},
-	{
-		desc:   "TCP6 IPv6 src IPv4 dst",
-		reader: bufio.NewReader(strings.NewReader(fixtureTCP6IPv6SrcIPv4Dst)),
-		expectedHeader: &Header{
-			Version:           1,
-			Command:           PROXY,
-			TransportProtocol: TCPv6,
-			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("2001:db8::1").To16(), Port: 51512},
-			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 22},
-		},
-		// Mixed family: genuine IPv6 source stays as-is, v4 dest becomes v4-mapped.
-		expectedWrite: "PROXY TCP6 2001:db8::1 ::ffff:192.0.2.1 51512 22" + crlf,
-	},
-	{
-		desc:   "TCP6 IPv4 src IPv6 dst",
-		reader: bufio.NewReader(strings.NewReader(fixtureTCP6IPv4SrcIPv6Dst)),
-		expectedHeader: &Header{
-			Version:           1,
-			Command:           PROXY,
-			TransportProtocol: TCPv6,
-			SourceAddr:        &net.TCPAddr{IP: net.ParseIP("192.0.2.1").To16(), Port: 51512},
-			DestinationAddr:   &net.TCPAddr{IP: net.ParseIP("2001:db8::1").To16(), Port: 22},
-		},
-		// Mixed family: v4 source becomes v4-mapped, genuine IPv6 dest stays as-is.
-		expectedWrite: "PROXY TCP6 ::ffff:192.0.2.1 2001:db8::1 51512 22" + crlf,
-	},
+	// NOTE: plain IPv4 literals in TCP6 lines (nginx OSS compatibility) are
+	// covered by TestParseV1IPv4InTCP6Compat; by default they are rejected.
 }
 
 func TestParseV1Valid(t *testing.T) {
@@ -450,4 +569,46 @@ func TestVersion1SlowLorisOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client error: %v", err)
 	}
+}
+
+// TestParseV1Boundaries pins the spec's numeric edges exactly: port 65535 is
+// the last valid port and 65536 the first invalid one; 107 bytes (including
+// CRLF) is the longest valid line and 108 the shortest invalid one.
+func TestParseV1Boundaries(t *testing.T) {
+	t.Run("port 65535 accepted", func(t *testing.T) {
+		h, err := Read(newBufioReader([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 65535 65535" + crlf)))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if src, dst, ok := h.Ports(); !ok || src != 65535 || dst != 65535 {
+			t.Fatalf("expected ports 65535/65535, got %d/%d ok=%v", src, dst, ok)
+		}
+	})
+	t.Run("port 65536 rejected", func(t *testing.T) {
+		if _, err := Read(newBufioReader([]byte("PROXY TCP4 1.2.3.4 5.6.7.8 65536 443" + crlf))); !errors.Is(err, ErrInvalidPortNumber) {
+			t.Fatalf("expected ErrInvalidPortNumber, got %v", err)
+		}
+	})
+
+	// "PROXY UNKNOWN" plus filler up to the limit; the receiver must ignore
+	// everything before the CRLF.
+	line107 := "PROXY UNKNOWN " + strings.Repeat("x", 107-len("PROXY UNKNOWN ")-len(crlf)) + crlf
+	if len(line107) != 107 {
+		t.Fatalf("fixture error: line is %d bytes, want 107", len(line107))
+	}
+	t.Run("107-byte line accepted", func(t *testing.T) {
+		h, err := Read(newBufioReader([]byte(line107)))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !h.Command.IsLocal() {
+			t.Fatalf("expected UNKNOWN to map to LOCAL, got %#x", byte(h.Command))
+		}
+	})
+	t.Run("108-byte line rejected", func(t *testing.T) {
+		line108 := "PROXY UNKNOWN " + strings.Repeat("x", 108-len("PROXY UNKNOWN ")-len(crlf)) + crlf
+		if _, err := Read(newBufioReader([]byte(line108))); !errors.Is(err, ErrVersion1HeaderTooLong) {
+			t.Fatalf("expected ErrVersion1HeaderTooLong, got %v", err)
+		}
+	})
 }

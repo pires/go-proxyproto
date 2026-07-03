@@ -312,6 +312,20 @@ func TestEqualsTo(t *testing.T) {
 			},
 			true,
 		},
+		{
+			// Command mismatch is decisive even when everything else matches.
+			&Header{Version: 2, Command: PROXY, TransportProtocol: TCPv4, SourceAddr: v4addr, DestinationAddr: v4addr},
+			&Header{Version: 2, Command: LOCAL, TransportProtocol: TCPv4, SourceAddr: v4addr, DestinationAddr: v4addr},
+			false,
+		},
+		{
+			// LOCAL headers compare equal regardless of addresses: per spec the
+			// real connection endpoints are used, so stored addresses are
+			// informational and do not participate in equality.
+			&Header{Version: 2, Command: LOCAL, TransportProtocol: TCPv4, SourceAddr: v4addr, DestinationAddr: v4addr},
+			&Header{Version: 2, Command: LOCAL, TransportProtocol: TCPv4, SourceAddr: v6addr, DestinationAddr: v6addr},
+			true,
+		},
 	}
 
 	for _, tt := range headersEqual {
@@ -328,11 +342,6 @@ func TestEqualToDeprecatedWrapper(t *testing.T) {
 	if !header.EqualTo(header) {
 		t.Fatal("EqualTo did not delegate to EqualsTo")
 	}
-}
-
-// This is here just because of coveralls.
-func TestEqualTo(t *testing.T) {
-	TestEqualsTo(t)
 }
 
 func TestGetters(t *testing.T) {
@@ -378,7 +387,7 @@ func TestGetters(t *testing.T) {
 			header: &Header{
 				Version:           2,
 				Command:           PROXY,
-				TransportProtocol: UDPv6,
+				TransportProtocol: UDPv4,
 				SourceAddr: &net.UDPAddr{
 					IP:   net.ParseIP(testSourceIPv4Addr),
 					Port: 1000,
@@ -461,7 +470,12 @@ func TestGetters(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tcpSourceAddr, tcpDestAddr, _ := test.header.TCPAddrs()
+			// Each getter must report ok exactly when this header's transport
+			// matches; a UDP header must not satisfy TCPAddrs and vice versa.
+			tcpSourceAddr, tcpDestAddr, tcpOK := test.header.TCPAddrs()
+			if wantOK := test.tcpSourceAddr != nil; tcpOK != wantOK {
+				t.Errorf("TCPAddrs() ok = %v, want %v", tcpOK, wantOK)
+			}
 			if test.tcpSourceAddr != nil && !reflect.DeepEqual(tcpSourceAddr, test.tcpSourceAddr) {
 				t.Errorf("TCPAddrs() source = %v, want %v", tcpSourceAddr, test.tcpSourceAddr)
 			}
@@ -469,15 +483,21 @@ func TestGetters(t *testing.T) {
 				t.Errorf("TCPAddrs() dest = %v, want %v", tcpDestAddr, test.tcpDestAddr)
 			}
 
-			udpSourceAddr, udpDestAddr, _ := test.header.UDPAddrs()
+			udpSourceAddr, udpDestAddr, udpOK := test.header.UDPAddrs()
+			if wantOK := test.udpSourceAddr != nil; udpOK != wantOK {
+				t.Errorf("UDPAddrs() ok = %v, want %v", udpOK, wantOK)
+			}
 			if test.udpSourceAddr != nil && !reflect.DeepEqual(udpSourceAddr, test.udpSourceAddr) {
-				t.Errorf("TCPAddrs() source = %v, want %v", udpSourceAddr, test.udpSourceAddr)
+				t.Errorf("UDPAddrs() source = %v, want %v", udpSourceAddr, test.udpSourceAddr)
 			}
 			if test.udpDestAddr != nil && !reflect.DeepEqual(udpDestAddr, test.udpDestAddr) {
-				t.Errorf("TCPAddrs() dest = %v, want %v", udpDestAddr, test.udpDestAddr)
+				t.Errorf("UDPAddrs() dest = %v, want %v", udpDestAddr, test.udpDestAddr)
 			}
 
-			unixSourceAddr, unixDestAddr, _ := test.header.UnixAddrs()
+			unixSourceAddr, unixDestAddr, unixOK := test.header.UnixAddrs()
+			if wantOK := test.unixSourceAddr != nil; unixOK != wantOK {
+				t.Errorf("UnixAddrs() ok = %v, want %v", unixOK, wantOK)
+			}
 			if test.unixSourceAddr != nil && !reflect.DeepEqual(unixSourceAddr, test.unixSourceAddr) {
 				t.Errorf("UnixAddrs() source = %v, want %v", unixSourceAddr, test.unixSourceAddr)
 			}
@@ -485,7 +505,10 @@ func TestGetters(t *testing.T) {
 				t.Errorf("UnixAddrs() dest = %v, want %v", unixDestAddr, test.unixDestAddr)
 			}
 
-			ipSource, ipDest, _ := test.header.IPs()
+			ipSource, ipDest, ipOK := test.header.IPs()
+			if wantOK := test.ipSource != nil; ipOK != wantOK {
+				t.Errorf("IPs() ok = %v, want %v", ipOK, wantOK)
+			}
 			if test.ipSource != nil && !ipSource.Equal(test.ipSource) {
 				t.Errorf("IPs() source = %v, want %v", ipSource, test.ipSource)
 			}
@@ -493,7 +516,10 @@ func TestGetters(t *testing.T) {
 				t.Errorf("IPs() dest = %v, want %v", ipDest, test.ipDest)
 			}
 
-			portSource, portDest, _ := test.header.Ports()
+			portSource, portDest, portsOK := test.header.Ports()
+			if wantOK := test.portSource != 0; portsOK != wantOK {
+				t.Errorf("Ports() ok = %v, want %v", portsOK, wantOK)
+			}
 			if test.portSource != 0 && portSource != test.portSource {
 				t.Errorf("Ports() source = %v, want %v", portSource, test.portSource)
 			}
@@ -995,6 +1021,69 @@ func TestHeaderProxyFromAddrs(t *testing.T) {
 
 			if !h.EqualsTo(tt.expected) {
 				t.Errorf("expected %+v, actual %+v for source %+v and destination %+v", tt.expected, h, tt.sourceAddr, tt.destAddr)
+			}
+		})
+	}
+}
+
+// TestEqualsToNilAddresses pins that EqualsTo never panics on hand-built PROXY
+// headers lacking addresses: nil addresses compare equal to nil and unequal to
+// any concrete address.
+func TestEqualsToNilAddresses(t *testing.T) {
+	bare := func() *Header {
+		return &Header{Version: 2, Command: PROXY, TransportProtocol: TCPv4}
+	}
+	withAddrs := &Header{
+		Version:           2,
+		Command:           PROXY,
+		TransportProtocol: TCPv4,
+		SourceAddr:        v4addr,
+		DestinationAddr:   v4addr,
+	}
+
+	if !bare().EqualsTo(bare()) {
+		t.Error("headers with nil addresses on both sides must be equal")
+	}
+	if bare().EqualsTo(withAddrs) || withAddrs.EqualsTo(bare()) {
+		t.Error("nil addresses must not compare equal to concrete addresses")
+	}
+}
+
+// prefixErrReader yields a fixed prefix, then a non-EOF error on every
+// subsequent read.
+type prefixErrReader struct {
+	data []byte
+	err  error
+	pos  int
+}
+
+func (r *prefixErrReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+// TestReadPropagatesPeekErrors pins that a non-EOF transport error during
+// signature detection surfaces as-is instead of being masked as
+// ErrNoProxyProtocol: only a clean EOF means "no header present".
+func TestReadPropagatesPeekErrors(t *testing.T) {
+	errBoom := errors.New("boom")
+	for _, tc := range []struct {
+		desc   string
+		prefix []byte
+	}{
+		// Enough bytes to pass the 1-byte peek, failing the 5-byte peek.
+		{"v1 signature prefix", []byte("PR")},
+		// Enough bytes to pass the 5-byte peek, failing the 12-byte peek.
+		{"v2 signature prefix", SIGV2[:6]},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			r := bufio.NewReader(&prefixErrReader{data: tc.prefix, err: errBoom})
+			if _, err := Read(r); !errors.Is(err, errBoom) {
+				t.Fatalf("expected transport error to propagate, got %v", err)
 			}
 		})
 	}

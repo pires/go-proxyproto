@@ -300,7 +300,7 @@ func (p *Conn) ProxyHeader() *Header {
 func (p *Conn) LocalAddr() net.Addr {
 	// Ensure header processing runs at most once.
 	_ = p.ensureHeaderProcessed()
-	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil {
+	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil || p.header.DestinationAddr == nil {
 		return p.conn.LocalAddr()
 	}
 
@@ -316,7 +316,7 @@ func (p *Conn) LocalAddr() net.Addr {
 func (p *Conn) RemoteAddr() net.Addr {
 	// Ensure header processing runs at most once.
 	_ = p.ensureHeaderProcessed()
-	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil {
+	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil || p.header.SourceAddr == nil {
 		return p.conn.RemoteAddr()
 	}
 
