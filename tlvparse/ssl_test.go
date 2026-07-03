@@ -385,3 +385,50 @@ func mustJoinTLVs(t *testing.T, tlvs ...proxyproto.TLV) []byte {
 	}
 	return raw
 }
+
+// TestPP2SSLStringSubTLVAccessors pins the string sub-TLV getters, including
+// the spec v3.4 additions PP2_SUBTYPE_SSL_GROUP and PP2_SUBTYPE_SSL_SIG_SCHEME.
+func TestPP2SSLStringSubTLVAccessors(t *testing.T) {
+	ssl := PP2SSL{
+		Client: PP2_BITFIELD_CLIENT_SSL,
+		Verify: 0,
+		TLV: []proxyproto.TLV{
+			{Type: proxyproto.PP2_SUBTYPE_SSL_VERSION, Value: []byte("TLSv1.3")},
+			{Type: proxyproto.PP2_SUBTYPE_SSL_SIG_ALG, Value: []byte("RSA-SHA256")},
+			{Type: proxyproto.PP2_SUBTYPE_SSL_KEY_ALG, Value: []byte("RSA2048")},
+			{Type: proxyproto.PP2_SUBTYPE_SSL_GROUP, Value: []byte("secp256r1")},
+			{Type: proxyproto.PP2_SUBTYPE_SSL_SIG_SCHEME, Value: []byte("rsa_pss_rsae_sha256")},
+		},
+	}
+
+	for _, tc := range []struct {
+		name string
+		get  func() (string, bool)
+		want string
+	}{
+		{"SSLSigAlg", ssl.SSLSigAlg, "RSA-SHA256"},
+		{"SSLKeyAlg", ssl.SSLKeyAlg, "RSA2048"},
+		{"SSLGroup", ssl.SSLGroup, "secp256r1"},
+		{"SSLSigScheme", ssl.SSLSigScheme, "rsa_pss_rsae_sha256"},
+	} {
+		got, ok := tc.get()
+		if !ok || got != tc.want {
+			t.Errorf("%s = (%q, %v), want (%q, true)", tc.name, got, ok, tc.want)
+		}
+	}
+
+	empty := PP2SSL{Client: 0, Verify: 1}
+	for _, tc := range []struct {
+		name string
+		get  func() (string, bool)
+	}{
+		{"SSLSigAlg", empty.SSLSigAlg},
+		{"SSLKeyAlg", empty.SSLKeyAlg},
+		{"SSLGroup", empty.SSLGroup},
+		{"SSLSigScheme", empty.SSLSigScheme},
+	} {
+		if got, ok := tc.get(); ok || got != "" {
+			t.Errorf("%s on empty PP2SSL = (%q, %v), want (\"\", false)", tc.name, got, ok)
+		}
+	}
+}

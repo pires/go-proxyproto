@@ -79,6 +79,8 @@ func TestV2TLVPP2Registered(t *testing.T) {
 		PP2_TYPE_ALPN, PP2_TYPE_AUTHORITY, PP2_TYPE_CRC32C, PP2_TYPE_NOOP, PP2_TYPE_UNIQUE_ID,
 		PP2_TYPE_SSL, PP2_SUBTYPE_SSL_VERSION, PP2_SUBTYPE_SSL_CN,
 		PP2_SUBTYPE_SSL_CIPHER, PP2_SUBTYPE_SSL_SIG_ALG, PP2_SUBTYPE_SSL_KEY_ALG,
+		// Registered in spec v3.4 (2025/2026 revisions).
+		PP2_SUBTYPE_SSL_GROUP, PP2_SUBTYPE_SSL_SIG_SCHEME, PP2_SUBTYPE_SSL_CLIENT_CERT,
 		PP2_TYPE_NETNS,
 	}
 	pp2RegMap := make(map[PP2Type]bool)
@@ -145,5 +147,43 @@ func TestJoinTLVs(t *testing.T) {
 				t.Errorf("expected %#v, got %#v", tc.raw, raw)
 			}
 		})
+	}
+}
+
+// TestPP2TypeReservedRanges pins the App/Experiment/Future/Spec classification
+// at the boundaries of the reserved ranges from spec section 2.2.8, which the
+// exhaustive Registered sweep in TestV2TLVPP2Registered does not cover.
+func TestPP2TypeReservedRanges(t *testing.T) {
+	for _, tc := range []struct {
+		typ                     PP2Type
+		app, experiment, future bool
+	}{
+		{typ: 0x00}, // unassigned
+		{typ: 0x06}, // unassigned, just past UNIQUE_ID
+		{typ: 0x29}, // unassigned, just past SSL_CLIENT_CERT
+		{typ: 0xDF}, // unassigned, just before custom range
+		{typ: PP2_TYPE_MIN_CUSTOM, app: true},
+		{typ: PP2_TYPE_MAX_CUSTOM, app: true},
+		{typ: PP2_TYPE_MIN_EXPERIMENT, experiment: true},
+		{typ: PP2_TYPE_MAX_EXPERIMENT, experiment: true},
+		{typ: PP2_TYPE_MIN_FUTURE, future: true},
+		{typ: PP2_TYPE_MAX_FUTURE, future: true},
+	} {
+		if tc.typ.Registered() {
+			t.Errorf("type %#x must not be Registered", byte(tc.typ))
+		}
+		if got := tc.typ.App(); got != tc.app {
+			t.Errorf("type %#x: App() = %v, want %v", byte(tc.typ), got, tc.app)
+		}
+		if got := tc.typ.Experiment(); got != tc.experiment {
+			t.Errorf("type %#x: Experiment() = %v, want %v", byte(tc.typ), got, tc.experiment)
+		}
+		if got := tc.typ.Future(); got != tc.future {
+			t.Errorf("type %#x: Future() = %v, want %v", byte(tc.typ), got, tc.future)
+		}
+		reserved := tc.app || tc.experiment || tc.future
+		if got := tc.typ.Spec(); got != reserved {
+			t.Errorf("type %#x: Spec() = %v, want %v", byte(tc.typ), got, reserved)
+		}
 	}
 }
