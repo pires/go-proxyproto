@@ -2,7 +2,6 @@
 
 [![Actions Status](https://github.com/pires/go-proxyproto/workflows/test/badge.svg)](https://github.com/pires/go-proxyproto/actions)
 [![Coverage Status](https://coveralls.io/repos/github/pires/go-proxyproto/badge.svg?branch=main)](https://coveralls.io/github/pires/go-proxyproto?branch=main)
-[![Go Report Card](https://goreportcard.com/badge/github.com/pires/go-proxyproto)](https://goreportcard.com/report/github.com/pires/go-proxyproto)
 [![Go Reference](https://pkg.go.dev/badge/github.com/pires/go-proxyproto.svg)](https://pkg.go.dev/github.com/pires/go-proxyproto)
 
 
