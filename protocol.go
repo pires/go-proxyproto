@@ -531,6 +531,11 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 
 	// If the buffer has been drained, copy directly from conn.
 	if p.bufReader.Buffered() == 0 {
+		// Check for pending errors.
+		if _, err := p.bufReader.Read(nil); err != nil {
+			return 0, err
+		}
+
 		// Garbage collect the buffer.
 		p.bufReader = nil
 
