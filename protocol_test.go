@@ -2221,7 +2221,7 @@ type pendingErrorReader struct {
 }
 
 func (r *pendingErrorReader) Read(p []byte) (int, error) {
-	return copy(p, r.data), errReadIntentionallyBroken // Data + pending EOF
+	return copy(p, r.data), errReadIntentionallyBroken // Data + pending error
 }
 
 // chunkedConn wraps a net.Conn and limits reads to simulate TCP chunking.
