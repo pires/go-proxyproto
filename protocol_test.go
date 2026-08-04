@@ -2198,7 +2198,7 @@ func TestWriteToWithEmptyBufferAndPendingError(t *testing.T) {
 	// Ensure header is already read.
 	proxyConn.ProxyHeader()
 
-	// Replace buffer with a no progress reader.
+	// Replace buffer with a pending error reader.
 	data := []byte("pending")
 	proxyConn.bufReader.Reset(&pendingErrorReader{data: data})
 
