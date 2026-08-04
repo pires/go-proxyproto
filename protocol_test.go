@@ -2217,15 +2217,10 @@ func TestWriteToWithEmptyBufferAndPendingError(t *testing.T) {
 }
 
 type pendingErrorReader struct {
-	done bool
 	data []byte
 }
 
 func (r *pendingErrorReader) Read(p []byte) (int, error) {
-	if r.done {
-		return 0, io.EOF
-	}
-	r.done = true
 	return copy(p, r.data), errReadIntentionallyBroken // Data + pending EOF
 }
 
