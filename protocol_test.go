@@ -2135,6 +2135,95 @@ func TestWriteToDrainsBufferedData(t *testing.T) {
 	expectClientOK(t, cliResult)
 }
 
+func TestWriteToWithEmptyBuffer(t *testing.T) {
+	l := newLocalListener(t)
+
+	pl := &Listener{Listener: l}
+
+	payload := []byte("")
+
+	// closeAfter closes the client so WriteTo's io.Copy completes.
+	cliResult := runClient(t, clientConfig{
+		addr:       pl.Addr().String(),
+		header:     testTCPv4Header(),
+		payload:    payload,
+		closeAfter: true,
+	})
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	closeOnCleanup(t, "connection", conn)
+
+	proxyConn := conn.(*Conn)
+
+	var out bytes.Buffer
+	if _, err = proxyConn.WriteTo(&out); err != nil {
+		t.Fatalf("unexpected WriteTo error: %v", err)
+	}
+	if !bytes.Equal(out.Bytes(), payload) {
+		t.Fatalf("unexpected WriteTo output: %q", out.String())
+	}
+	if proxyConn.bufReader != nil {
+		t.Fatalf("expected nil bufReader, got: %+v", proxyConn.bufReader)
+	}
+
+	expectClientOK(t, cliResult)
+}
+
+func TestWriteToWithEmptyBufferAndPendingError(t *testing.T) {
+	l := newLocalListener(t)
+
+	pl := &Listener{Listener: l}
+
+	payload := []byte("")
+
+	// closeAfter closes the client so WriteTo's io.Copy completes.
+	cliResult := runClient(t, clientConfig{
+		addr:       pl.Addr().String(),
+		header:     testTCPv4Header(),
+		payload:    payload,
+		closeAfter: true,
+	})
+
+	conn, err := pl.Accept()
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	closeOnCleanup(t, "connection", conn)
+
+	proxyConn := conn.(*Conn)
+
+	// Ensure header is already read.
+	proxyConn.ProxyHeader()
+
+	// Replace buffer with a pending error reader.
+	data := []byte("pending")
+	proxyConn.bufReader.Reset(&pendingErrorReader{data: data})
+
+	// Trigger full buffer read with error.
+	_, _ = proxyConn.bufReader.Read(make([]byte, len(data)))
+
+	var out bytes.Buffer
+	if _, err = proxyConn.WriteTo(&out); !errors.Is(err, errReadIntentionallyBroken) {
+		t.Fatalf("expected WriteTo read intentionally broken error, but got: %v", err)
+	}
+	if out.Len() > 0 {
+		t.Fatalf("unexpected WriteTo output: %q", out.String())
+	}
+
+	expectClientOK(t, cliResult)
+}
+
+type pendingErrorReader struct {
+	data []byte
+}
+
+func (r *pendingErrorReader) Read(p []byte) (int, error) {
+	return copy(p, r.data), errReadIntentionallyBroken // Data + pending error
+}
+
 // chunkedConn wraps a net.Conn and limits reads to simulate TCP chunking.
 type chunkedConn struct {
 	net.Conn
