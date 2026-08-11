@@ -532,8 +532,8 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 	// If the buffer has been drained, copy directly from conn.
 	if p.bufReader.Buffered() == 0 {
 		// Check for pending errors.
-		if _, err := p.bufReader.Read(nil); err != nil {
-			return 0, err
+		if n, err := p.bufReader.Read(nil); err != nil {
+			return int64(n), err
 		}
 
 		// Garbage collect the buffer.
@@ -543,8 +543,8 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 	}
 
 	b := make([]byte, p.bufReader.Buffered())
-	if _, err := io.ReadFull(p.bufReader, b); err != nil {
-		return 0, err // this should never happen as we read buffered data.
+	if n, err := io.ReadFull(p.bufReader, b); err != nil {
+		return int64(n), err // this should never happen as we read buffered data.
 	}
 
 	// Garbage collect the buffer.
