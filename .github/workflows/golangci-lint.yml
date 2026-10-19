@@ -12,7 +12,11 @@ permissions:
   contents: read
 
 jobs:
+  actionlint:
+    uses: ./.github/workflows/actionlint.yml
+
   golangci:
+    needs: actionlint
     name: lint
     runs-on: ubuntu-latest
     env:
