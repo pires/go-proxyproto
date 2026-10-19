@@ -10,7 +10,11 @@ permissions:
   contents: read
 
 jobs:
+  actionlint:
+    uses: ./.github/workflows/actionlint.yml
+
   test:
+    needs: actionlint
     runs-on: ubuntu-latest
     env:
       GOTOOLCHAIN: local
@@ -31,7 +35,10 @@ jobs:
       run: go build ./...
 
     - name: Test
-      run: go test -race -shuffle=on -v -covermode=atomic -coverprofile=coverage.out $(go list ./... | grep -v '/examples/')
+      run: |
+        package_list=$(go list ./... | grep -v '/examples/')
+        mapfile -t packages <<< "$package_list"
+        go test -race -shuffle=on -v -covermode=atomic -coverprofile=coverage.out "${packages[@]}"
 
     - name: Send coverage
       uses: shogo82148/actions-goveralls@v1
@@ -47,6 +54,7 @@ jobs:
   # editing this workflow. A discovered crasher fails the job and is uploaded so
   # it can be reproduced locally.
   fuzz:
+    needs: actionlint
     runs-on: ubuntu-latest
     env:
       GOTOOLCHAIN: local
