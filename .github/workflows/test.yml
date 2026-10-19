@@ -14,17 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.26', '1.27']
+        go: ['1.26.x', '1.27.x']
     steps:
+    - uses: actions/checkout@v7
     - uses: actions/setup-go@v6
       with:
         go-version: ${{ matrix.go }}
-    - uses: actions/checkout@v7
-
-    - name: Get dependencies
-      run: |
-        go get golang.org/x/tools/cmd/cover
-        go get github.com/mattn/goveralls
+        check-latest: true
 
     # The example runnables carry no tests and would only drag the coverage
     # metric down, but they must still compile.
@@ -57,12 +53,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.26', '1.27']
+        go: ['1.26.x', '1.27.x']
     steps:
+    - uses: actions/checkout@v7
     - uses: actions/setup-go@v6
       with:
         go-version: ${{ matrix.go }}
-    - uses: actions/checkout@v7
+        check-latest: true
 
     - name: Fuzz
       run: |
@@ -110,7 +107,7 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v7
       with:
-        name: fuzz-crashers
+        name: fuzz-crashers-Go-${{ matrix.go }}
         path: '**/testdata/fuzz/**'
         if-no-files-found: ignore
 

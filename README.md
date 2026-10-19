@@ -17,6 +17,8 @@ UDP uses packet helpers because the spec requires a header in every datagram.
 
 ## Installation
 
+Requires Go 1.26.9 or later. CI tests Go 1.26 and 1.27.
+
 ```shell
 $ go get github.com/pires/go-proxyproto
 ```
