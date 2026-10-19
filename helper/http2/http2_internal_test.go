@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pires/go-proxyproto"
+	wirehttp2 "golang.org/x/net/http2"
 )
 
 // TestServeConn_ConnContextReturnsNil lives in package http2 (not http2_test) so
@@ -21,7 +22,7 @@ import (
 // the same goroutine, which is not possible through the public Serve API because
 // Serve spawns a new goroutine per connection.
 func TestServeConn_ConnContextReturnsNil(t *testing.T) {
-	srv := NewServer(&http.Server{
+	srv := NewServerWithConfig(&http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
 		Handler:           http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}),
 		ConnContext: func(_ context.Context, _ net.Conn) context.Context {
@@ -72,7 +73,7 @@ func TestServeReturnsErrServerClosedAfterClose(t *testing.T) {
 	// Serve should fail before calling Accept when Close/Shutdown has already
 	// marked the shared server closed. This avoids accepting new sockets after
 	// the user has shut the server down.
-	srv := NewServer(&http.Server{
+	srv := NewServerWithConfig(&http.Server{
 		ReadHeaderTimeout: time.Second,
 	}, nil)
 	t.Cleanup(func() { _ = srv.h1.Close() })
@@ -100,7 +101,7 @@ func TestServeAcceptErrorPaths(t *testing.T) {
 	var logBuf bytes.Buffer
 	var calls int
 
-	srv := NewServer(&http.Server{
+	srv := NewServerWithConfig(&http.Server{
 		ReadHeaderTimeout: time.Second,
 		ErrorLog:          log.New(&logBuf, "", 0),
 	}, nil)
@@ -129,7 +130,7 @@ func TestServeAcceptErrorPaths(t *testing.T) {
 func TestServeReturnsErrServerClosedWhenListenerClosedDuringServe(t *testing.T) {
 	// If the listener closes because the server is closing, Serve should normalize
 	// the listener error to http.ErrServerClosed, matching net/http semantics.
-	srv := NewServer(&http.Server{
+	srv := NewServerWithConfig(&http.Server{
 		ReadHeaderTimeout: time.Second,
 	}, nil)
 	t.Cleanup(func() { _ = srv.h1.Close() })
@@ -302,7 +303,7 @@ func (e timeoutError) Temporary() bool { return true }
 // TestServeConnTLSHandshakeFailure pins the tls.Conn branch: a failed
 // handshake must close the connection and surface the error.
 func TestServeConnTLSHandshakeFailure(t *testing.T) {
-	srv := NewServer(&http.Server{ReadHeaderTimeout: 5 * time.Second}, nil)
+	srv := NewServerWithConfig(&http.Server{ReadHeaderTimeout: 5 * time.Second}, nil)
 
 	clientConn, serverConn := net.Pipe()
 	defer func() { _ = clientConn.Close() }()
@@ -316,4 +317,136 @@ func TestServeConnTLSHandshakeFailure(t *testing.T) {
 	if err := srv.serveConn(context.Background(), tls.Server(serverConn, &tls.Config{})); err == nil {
 		t.Fatal("expected TLS handshake error")
 	}
+}
+
+// Verify actual SETTINGS frames so both the compatibility constructor and the
+// standard-library constructor serve HTTP/2 and apply their configuration.
+func TestServerHTTP2Settings(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		newServer func(*http.Server) *Server
+		want      uint32
+	}{
+		{"legacy", func(h1 *http.Server) *Server { return NewServer(h1, nil) }, 0},
+		{"standard", func(h1 *http.Server) *Server {
+			return NewServerWithConfig(h1, &http.HTTP2Config{MaxConcurrentStreams: 7})
+		}, 7},
+		{"existing-config", func(h1 *http.Server) *Server {
+			h1.HTTP2 = &http.HTTP2Config{MaxConcurrentStreams: 9}
+			return NewServerWithConfig(h1, nil)
+		}, 9},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h1 := &http.Server{ReadHeaderTimeout: time.Second}
+			srv := tc.newServer(h1)
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- srv.Serve(&proxyproto.Listener{Listener: ln}) }()
+			t.Cleanup(func() {
+				_ = h1.Close()
+				if err := <-done; !errors.Is(err, http.ErrServerClosed) {
+					t.Errorf("Serve: %v", err)
+				}
+			})
+			conn, err := net.Dial("tcp", ln.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+			if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			header := proxyproto.Header{Version: 2, Command: proxyproto.LOCAL, TransportProtocol: proxyproto.UNSPEC}
+			if err := header.SetTLVs([]proxyproto.TLV{{Type: proxyproto.PP2_TYPE_ALPN, Value: []byte("h2")}}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := header.WriteTo(conn); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := io.WriteString(conn, wirehttp2.ClientPreface); err != nil {
+				t.Fatal(err)
+			}
+			framer := wirehttp2.NewFramer(conn, conn)
+			if err := framer.WriteSettings(); err != nil {
+				t.Fatal(err)
+			}
+			frame, err := framer.ReadFrame()
+			if err != nil {
+				t.Fatal(err)
+			}
+			settings, ok := frame.(*wirehttp2.SettingsFrame)
+			if !ok {
+				t.Fatalf("expected SETTINGS, got %T", frame)
+			}
+			streams, ok := settings.Value(wirehttp2.SettingMaxConcurrentStreams)
+			if !ok || streams == 0 || (tc.want != 0 && streams != tc.want) {
+				t.Fatalf("MaxConcurrentStreams = %d (present %v), want %d", streams, ok, tc.want)
+			}
+		})
+	}
+}
+
+func TestServeConnRejectedHandoffClosesConnection(t *testing.T) {
+	// Closing the handoff listener must reject new connections without keeping
+	// their prepared contexts or leaving the peer blocked on an open socket.
+	srv := &Server{
+		h1:       &http.Server{ReadHeaderTimeout: time.Second},
+		contexts: make(map[net.Conn]context.Context),
+	}
+	srv.h1Listener = h1Listener{newPipeListener(), srv}
+	if err := srv.h1Listener.pipeListener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	peer, conn := net.Pipe()
+	t.Cleanup(func() { _ = peer.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
+
+	if err := srv.serveConn(context.Background(), conn); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("serveConn: got %v, want %v", err, net.ErrClosed)
+	}
+	if len(srv.contexts) != 0 {
+		t.Fatalf("rejected connection retained %d contexts", len(srv.contexts))
+	}
+	if err := peer.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		// net.Pipe also reports a closed peer when setting a deadline.
+		if !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatal(err)
+		}
+	}
+	if _, err := peer.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+		t.Fatalf("peer read: got %v, want EOF", err)
+	}
+}
+
+func TestServeReturnsSetupErrorBeforeAccept(t *testing.T) {
+	setupErr := errors.New("HTTP/2 configuration failed")
+	srv := &Server{setupErr: setupErr}
+	err := srv.Serve(&stubListener{accept: func() (net.Conn, error) {
+		t.Fatal("Serve accepted a connection after setup failed")
+		return nil, net.ErrClosed
+	}})
+	if !errors.Is(err, setupErr) {
+		t.Fatalf("Serve: got %v, want %v", err, setupErr)
+	}
+}
+
+func TestServeRejectsNilBaseContext(t *testing.T) {
+	peer, conn := net.Pipe()
+	t.Cleanup(func() { _ = peer.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
+	srv := NewServerWithConfig(&http.Server{
+		ReadHeaderTimeout: time.Second,
+		BaseContext:       func(net.Listener) context.Context { return nil },
+	}, nil)
+	t.Cleanup(func() { _ = srv.h1.Close() })
+
+	defer func() {
+		if got := recover(); got != "BaseContext returned a nil context" {
+			t.Fatalf("panic = %v, want nil BaseContext rejection", got)
+		}
+	}()
+	_ = srv.Serve(&stubListener{accept: func() (net.Conn, error) { return conn, nil }})
 }

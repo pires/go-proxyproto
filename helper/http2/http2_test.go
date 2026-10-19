@@ -17,7 +17,6 @@ import (
 
 	"github.com/pires/go-proxyproto"
 	h2proxy "github.com/pires/go-proxyproto/helper/http2"
-	"golang.org/x/net/http2"
 )
 
 func ExampleServer() {
@@ -36,7 +35,7 @@ func ExampleServer() {
 		},
 	}
 
-	server := h2proxy.NewServer(&http.Server{
+	server := h2proxy.NewServerWithConfig(&http.Server{
 		ReadHeaderTimeout: 5 * time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("Hello world!\n"))
@@ -105,7 +104,7 @@ func TestServer_h2(t *testing.T) {
 		t.Fatalf("failed to write PROXY header: %v", err)
 	}
 
-	h2Conn, err := new(http2.Transport).NewClientConn(conn)
+	h2Conn, err := newHTTP2ClientConn(t, conn)
 	if err != nil {
 		t.Fatalf("failed to create HTTP connection: %v", err)
 	}
@@ -118,6 +117,9 @@ func TestServer_h2(t *testing.T) {
 	resp, err := h2Conn.RoundTrip(req)
 	if err != nil {
 		t.Fatalf("failed to perform HTTP request: %v", err)
+	}
+	if resp.ProtoMajor != 2 {
+		t.Errorf("expected HTTP/2, got %s", resp.Proto)
 	}
 	if err := resp.Body.Close(); err != nil {
 		t.Fatalf("failed to close response body: %v", err)
@@ -134,7 +136,7 @@ func TestServer_h2_tls(t *testing.T) {
 
 	conn, err := tls.Dial("tcp", addr, &tls.Config{
 		InsecureSkipVerify: true, //nolint:gosec // skipping certificate verification for testing.
-		NextProtos:         []string{http2.NextProtoTLS},
+		NextProtos:         []string{"h2"},
 	})
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
@@ -145,7 +147,7 @@ func TestServer_h2_tls(t *testing.T) {
 		}
 	}()
 
-	h2Conn, err := new(http2.Transport).NewClientConn(conn)
+	h2Conn, err := newHTTP2ClientConn(t, conn)
 	if err != nil {
 		t.Fatalf("failed to create HTTP connection: %v", err)
 	}
@@ -158,6 +160,9 @@ func TestServer_h2_tls(t *testing.T) {
 	resp, err := h2Conn.RoundTrip(req)
 	if err != nil {
 		t.Fatalf("failed to perform HTTP request: %v", err)
+	}
+	if resp.ProtoMajor != 2 {
+		t.Errorf("expected HTTP/2, got %s", resp.Proto)
 	}
 	if err := resp.Body.Close(); err != nil {
 		t.Errorf("failed to close response body: %v", err)
@@ -215,7 +220,7 @@ func TestServer_h2_nil_ConnContext(t *testing.T) {
 		t.Fatalf("failed to write PROXY header: %v", err)
 	}
 
-	h2Conn, err := new(http2.Transport).NewClientConn(conn)
+	h2Conn, err := newHTTP2ClientConn(t, conn)
 	if err != nil {
 		t.Fatalf("failed to create HTTP connection: %v", err)
 	}
@@ -228,6 +233,9 @@ func TestServer_h2_nil_ConnContext(t *testing.T) {
 	resp, err := h2Conn.RoundTrip(req)
 	if err != nil {
 		t.Fatalf("failed to perform HTTP request: %v", err)
+	}
+	if resp.ProtoMajor != 2 {
+		t.Errorf("expected HTTP/2, got %s", resp.Proto)
 	}
 	if err := resp.Body.Close(); err != nil {
 		t.Fatalf("failed to close response body: %v", err)
@@ -259,7 +267,7 @@ func startTestServer(t *testing.T, server *http.Server, wrapListener func(net.Li
 		}
 	}
 
-	h2Server := h2proxy.NewServer(server, nil)
+	h2Server := h2proxy.NewServerWithConfig(server, nil)
 	done := make(chan error, 1)
 	go func() {
 		done <- h2Server.Serve(serveLn)
@@ -307,8 +315,17 @@ func newContextAssertingServer(t *testing.T) *http.Server {
 			if v := r.Context().Value(baseContextKey); v == nil {
 				t.Errorf("http.Request.Context missing baseContextKey")
 			}
+			if r.Context().Value(http.ServerContextKey) == nil {
+				t.Error("http.Request.Context missing ServerContextKey")
+			}
+			if r.Context().Value(http.LocalAddrContextKey) == nil {
+				t.Error("http.Request.Context missing LocalAddrContextKey")
+			}
 		}),
-		BaseContext: func(_ net.Listener) context.Context {
+		BaseContext: func(ln net.Listener) context.Context {
+			if ln.Addr().Network() != "tcp" {
+				t.Errorf("BaseContext received internal listener: %v", ln.Addr())
+			}
 			return context.WithValue(context.Background(), baseContextKey, struct{}{})
 		},
 		ConnContext: func(ctx context.Context, _ net.Conn) context.Context {
@@ -357,7 +374,7 @@ func testTLSConfig(t *testing.T) *tls.Config {
 	return &tls.Config{
 		MinVersion:   tls.VersionTLS12,
 		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{http2.NextProtoTLS},
+		NextProtos:   []string{"h2"},
 	}
 }
 
@@ -397,7 +414,7 @@ func TestServer_h2c(t *testing.T) {
 		t.Fatalf("failed to write PROXY header: %v", err)
 	}
 
-	h2Conn, err := new(http2.Transport).NewClientConn(conn)
+	h2Conn, err := newHTTP2ClientConn(t, conn)
 	if err != nil {
 		t.Fatalf("failed to create HTTP connection: %v", err)
 	}
@@ -411,7 +428,29 @@ func TestServer_h2c(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to perform HTTP request: %v", err)
 	}
+	if resp.ProtoMajor != 2 {
+		t.Errorf("expected HTTP/2, got %s", resp.Proto)
+	}
 	if err := resp.Body.Close(); err != nil {
 		t.Fatalf("failed to close response body: %v", err)
 	}
+}
+
+// newHTTP2ClientConn uses a preconnected socket so tests can write the PROXY
+// header before handing the connection to the standard HTTP transport.
+func newHTTP2ClientConn(t *testing.T, conn net.Conn) (*http.ClientConn, error) {
+	t.Helper()
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	transport := &http.Transport{
+		Protocols: protocols,
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return conn, nil
+		},
+	}
+	client, err := transport.NewClientConn(t.Context(), "http", conn.RemoteAddr().String())
+	if err == nil {
+		t.Cleanup(func() { _ = client.Close() })
+	}
+	return client, err
 }

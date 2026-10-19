@@ -53,7 +53,7 @@ func main() {
 	// Create an HTTP server which can handle proxied incoming connections for
 	// both HTTP/1 and HTTP/2. HTTP/2 support relies on TLS ALPN, the reverse
 	// proxy needs to be configured to accept "h2".
-	if err := h2proxy.NewServer(&server, nil).Serve(proxyListener); err != nil {
+	if err := h2proxy.NewServerWithConfig(&server, nil).Serve(proxyListener); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
 }

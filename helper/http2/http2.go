@@ -27,33 +27,76 @@ const listenerRetryBaseDelay = 5 * time.Millisecond
 //
 // The server is closed when the http.Server is.
 type Server struct {
-	h1         *http.Server  // regular HTTP/1 server
-	h2         *http2.Server // HTTP/2 server
-	h2Err      error         // HTTP/2 server setup error, if any
-	h1Listener h1Listener    // pipe listener for the HTTP/1 server
+	h1          *http.Server // shared HTTP/1 and HTTP/2 server
+	setupErr    error
+	serveHTTP2  func(context.Context, net.Conn)
+	h1Listener  h1Listener // connection handoff to net/http
+	baseContext func(net.Listener) context.Context
+	connContext func(context.Context, net.Conn) context.Context
 
 	// The following fields are protected by the mutex
 	mu        sync.Mutex
 	closed    bool
 	listeners map[net.Listener]struct{}
+	contexts  map[net.Conn]context.Context
 }
 
-// NewServer creates a new HTTP server.
-//
+// NewServer creates an HTTP server using the legacy x/net HTTP/2 configuration.
 // A nil h2 is equivalent to a zero http2.Server.
+//
+// Deprecated: Use NewServerWithConfig with net/http.HTTP2Config instead.
 func NewServer(h1 *http.Server, h2 *http2.Server) *Server {
 	if h2 == nil {
 		h2 = new(http2.Server)
 	}
+	err := http2.ConfigureServer(h1, h2)
+	srv := newServer(h1, func(ctx context.Context, conn net.Conn) {
+		defer func() { _ = conn.Close() }()
+		h2.ServeConn(conn, &http2.ServeConnOpts{Context: ctx, BaseConfig: h1})
+	})
+	srv.setupErr = err
+	return srv
+}
+
+// NewServerWithConfig creates an HTTP server using standard-library HTTP/2.
+// A non-nil h2 overrides h1.HTTP2. Otherwise h1.HTTP2 is preserved.
+// Configure h1 before calling NewServerWithConfig; the helper installs its
+// context hooks and enables HTTP/1, TLS HTTP/2, and unencrypted HTTP/2.
+func NewServerWithConfig(h1 *http.Server, h2 *http.HTTP2Config) *Server {
+	if h2 != nil {
+		h1.HTTP2 = h2
+	}
+	h1.Protocols = new(http.Protocols)
+	h1.Protocols.SetHTTP1(true)
+	h1.Protocols.SetHTTP2(true)
+	h1.Protocols.SetUnencryptedHTTP2(true)
+	return newServer(h1, nil)
+}
+
+func newServer(h1 *http.Server, serveHTTP2 func(context.Context, net.Conn)) *Server {
 	srv := &Server{
-		h1:        h1,
-		h2:        h2,
-		h2Err:     http2.ConfigureServer(h1, h2),
-		listeners: make(map[net.Listener]struct{}),
+		h1:          h1,
+		serveHTTP2:  serveHTTP2,
+		listeners:   make(map[net.Listener]struct{}),
+		contexts:    make(map[net.Conn]context.Context),
+		baseContext: h1.BaseContext,
+		connContext: h1.ConnContext,
+	}
+	// Contexts are prepared using the original listener and connection before
+	// handing connections to net/http. Keep *tls.Conn intact for TLS ALPN.
+	h1.BaseContext = nil
+	h1.ConnContext = func(ctx context.Context, conn net.Conn) context.Context {
+		srv.mu.Lock()
+		prepared, ok := srv.contexts[conn]
+		delete(srv.contexts, conn)
+		srv.mu.Unlock()
+		if ok {
+			return prepared
+		}
+		return ctx
 	}
 	srv.h1Listener = h1Listener{newPipeListener(), srv}
 	go func() {
-		// proxyListener.Accept never fails
 		_ = h1.Serve(srv.h1Listener)
 	}()
 	return srv
@@ -68,8 +111,8 @@ func (srv *Server) errorLog() *log.Logger {
 
 // Serve accepts incoming connections on the listener ln.
 func (srv *Server) Serve(ln net.Listener) error {
-	if srv.h2Err != nil {
-		return srv.h2Err
+	if srv.setupErr != nil {
+		return srv.setupErr
 	}
 
 	srv.mu.Lock()
@@ -118,8 +161,11 @@ func (srv *Server) Serve(ln net.Listener) error {
 		delay = 0
 
 		baseCtx := context.Background()
-		if srv.h1.BaseContext != nil {
-			baseCtx = srv.h1.BaseContext(ln)
+		if srv.baseContext != nil {
+			baseCtx = srv.baseContext(ln)
+			if baseCtx == nil {
+				panic("BaseContext returned a nil context")
+			}
 		}
 
 		go func(baseCtx context.Context, conn net.Conn) {
@@ -161,27 +207,29 @@ func (srv *Server) serveConn(baseCtx context.Context, conn net.Conn) error {
 
 	// See https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
 	switch proto {
-	case http2.NextProtoTLS, "h2c":
-		defer func() {
-			if closeErr := conn.Close(); closeErr != nil {
-				srv.errorLog().Printf("failed to close connection: %v", closeErr)
-			}
-		}()
-
-		ctx := baseCtx
-		// Mirror net/http.Server ConnContext behavior.
-		if cc := srv.h1.ConnContext; cc != nil {
+	case "h2", "h2c", "", "http/1.0", "http/1.1":
+		ctx := context.WithValue(baseCtx, http.ServerContextKey, srv.h1)
+		if cc := srv.connContext; cc != nil {
 			ctx = cc(ctx, conn)
 			if ctx == nil {
 				panic("ConnContext returned nil")
 			}
 		}
-
-		opts := http2.ServeConnOpts{Context: ctx, BaseConfig: srv.h1}
-		srv.h2.ServeConn(conn, &opts)
+		if (proto == "h2" || proto == "h2c") && srv.serveHTTP2 != nil {
+			srv.serveHTTP2(ctx, conn)
+			return nil
+		}
+		srv.mu.Lock()
+		srv.contexts[conn] = ctx
+		srv.mu.Unlock()
+		if err := srv.h1Listener.ServeConn(conn); err != nil {
+			srv.mu.Lock()
+			delete(srv.contexts, conn)
+			srv.mu.Unlock()
+			_ = conn.Close()
+			return err
+		}
 		return nil
-	case "", "http/1.0", "http/1.1":
-		return srv.h1Listener.ServeConn(conn)
 	default:
 		if closeErr := conn.Close(); closeErr != nil {
 			srv.errorLog().Printf("failed to close connection: %v", closeErr)
