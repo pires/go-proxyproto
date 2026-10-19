@@ -5,6 +5,9 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: write # Required to create releases and generate release notes.
+
 jobs:
   release:
     runs-on: ubuntu-latest
