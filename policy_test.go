@@ -521,3 +521,59 @@ func TestPolicyFromRanges(t *testing.T) {
 		}
 	}
 }
+
+func TestPoliciesWithIPv6Zone(t *testing.T) {
+	trustedIP := net.ParseIP("fe80::1")
+	_, trustedRange, err := net.ParseCIDR("fe80::/64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trustRanges, err := TrustProxyHeaderFromRanges([]string{"fe80::1/128"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policies := []struct {
+		name          string
+		policy        ConnPolicyFunc
+		matched       Policy
+		unmatched     Policy
+		denyUnmatched bool
+	}{
+		{"trusted IP", TrustProxyHeaderFrom(trustedIP), REQUIRE, REJECT, true},
+		{"trusted range", trustRanges, REQUIRE, REJECT, true},
+		{"range policy", MustPolicyFromRanges([]string{"fe80::1/128"}, USE, IGNORE), USE, IGNORE, false},
+		{"skip CIDR", ConnSkipProxyHeaderForCIDR(trustedRange, REJECT), SKIP, REJECT, false},
+		{"local interface", IgnoreProxyHeaderNotOnInterface(trustedIP), USE, IGNORE, false},
+	}
+	for _, tc := range policies {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, network := range []string{"stream", "datagram"} {
+				t.Run(network, func(t *testing.T) {
+					for _, matched := range []bool{true, false} {
+						ip := trustedIP
+						want := tc.matched
+						if !matched {
+							ip = net.ParseIP("fe81::1")
+							want = tc.unmatched
+						}
+						var addr net.Addr = &net.TCPAddr{IP: ip, Port: 1234, Zone: "eth0"}
+						if network == "datagram" {
+							addr = &net.UDPAddr{IP: ip, Port: 1234, Zone: "eth0"}
+						}
+						got, err := tc.policy(ConnPolicyOptions{Upstream: addr, Downstream: addr})
+						if !matched && tc.denyUnmatched {
+							if !errors.Is(err, ErrInvalidUpstream) {
+								t.Fatalf("expected untrusted peer error, got %v", err)
+							}
+						} else if err != nil {
+							t.Fatalf("unexpected policy error for %s: %v", addr, err)
+						}
+						if got != want {
+							t.Fatalf("policy for %s: got %v, want %v", addr, got, want)
+						}
+					}
+				})
+			}
+		})
+	}
+}

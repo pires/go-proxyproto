@@ -3,6 +3,7 @@ package proxyproto
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 )
 
@@ -340,12 +341,14 @@ func ipFromAddr(upstream net.Addr) (net.IP, error) {
 		return nil, err
 	}
 
-	upstreamIP := net.ParseIP(upstreamString)
-	if nil == upstreamIP {
+	upstreamIP, err := netip.ParseAddr(upstreamString)
+	if err != nil {
 		return nil, fmt.Errorf("proxyproto: invalid IP address")
 	}
 
-	return upstreamIP, nil
+	// Policies compare IPs, so the interface zone of a scoped IPv6 socket
+	// address must not prevent matching the configured IP or CIDR.
+	return net.IP(upstreamIP.AsSlice()), nil
 }
 
 // TrustProxyHeaderFrom returns a ConnPolicyFunc implementing the spec's
