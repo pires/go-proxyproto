@@ -542,21 +542,22 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 		return io.Copy(w, p.conn)
 	}
 
-	b := make([]byte, p.bufReader.Buffered())
-	if _, err := io.ReadFull(p.bufReader, b); err != nil {
+	b, err := p.bufReader.Peek(p.bufReader.Buffered())
+	if err != nil {
 		return 0, err // this should never happen as we read buffered data.
 	}
-
-	// Garbage collect the buffer.
-	p.bufReader = nil
 
 	var n int64
 	{
 		nn, err := w.Write(b)
+		p.bufReader.Discard(nn)
 		n += int64(nn)
 		if err != nil {
 			return n, err
 		}
+
+		// Garbage collect the buffer.
+		p.bufReader = nil
 	}
 	{
 		nn, err := io.Copy(w, p.conn)
