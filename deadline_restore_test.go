@@ -117,7 +117,9 @@ func TestConcurrentHeaderDeadlineRestore(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Error("Read ignored caller deadline")
 				_ = server.Close()
-				_ = <-readDone
+				if err := <-readDone; err == nil {
+					t.Error("Read after Close unexpectedly succeeded")
+				}
 			}
 		})
 	}
