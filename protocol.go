@@ -88,6 +88,7 @@ type Listener struct {
 // return the address of the client instead of the proxy address. Each connection
 // will have its own readHeaderTimeout and readDeadline set by the Accept() call.
 type Conn struct {
+	deadlineMu   sync.Mutex   // serializes stored and underlying deadline updates
 	readDeadline atomic.Value // time.Time
 	once         sync.Once
 	readErr      error
@@ -392,12 +393,16 @@ func (p *Conn) UDPConn() (conn *net.UDPConn, ok bool) {
 
 // SetDeadline wraps original conn.SetDeadline.
 func (p *Conn) SetDeadline(t time.Time) error {
+	p.deadlineMu.Lock()
+	defer p.deadlineMu.Unlock()
 	p.readDeadline.Store(t)
 	return p.conn.SetDeadline(t)
 }
 
 // SetReadDeadline wraps original conn.SetReadDeadline.
 func (p *Conn) SetReadDeadline(t time.Time) error {
+	p.deadlineMu.Lock()
+	defer p.deadlineMu.Unlock()
 	// Set a local var that tells us the desired deadline. This is
 	// needed in order to reset the read deadline to the one that is
 	// desired by the user, rather than an empty deadline.
@@ -416,6 +421,7 @@ func (p *Conn) readHeader() error {
 	// apply a temporary deadline without extending a user-configured
 	// deadline. If the user has no deadline, we use now + timeout.
 	if p.readHeaderTimeout > 0 {
+		p.deadlineMu.Lock()
 		var (
 			storedDeadline time.Time
 			hasDeadline    bool
@@ -431,7 +437,9 @@ func (p *Conn) readHeader() error {
 			headerDeadline = storedDeadline
 		}
 
-		if err := p.conn.SetReadDeadline(headerDeadline); err != nil {
+		err := p.conn.SetReadDeadline(headerDeadline)
+		p.deadlineMu.Unlock()
+		if err != nil {
 			return err
 		}
 	}
@@ -444,6 +452,7 @@ func (p *Conn) readHeader() error {
 	// Therefore, we check whether the error is a net.Timeout and if it is, we decide
 	// the proxy proto does not exist and set the error accordingly.
 	if p.readHeaderTimeout > 0 {
+		p.deadlineMu.Lock()
 		t := p.readDeadline.Load()
 		if t == nil {
 			t = time.Time{}
@@ -455,6 +464,7 @@ func (p *Conn) readHeader() error {
 		// closes. Only surface a restore failure when the read produced neither
 		// a header nor an error of its own.
 		restoreErr := p.conn.SetReadDeadline(t.(time.Time))
+		p.deadlineMu.Unlock()
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			err = ErrNoProxyProtocol
 		} else if err == nil && header == nil {
